@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Native Sparse Attention — quanta-log</title>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="../assets/style.css" />
+
+  <!-- KaTeX v0.16.9 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+    onload="renderMathInElement(document.body, {
+      delimiters: [
+        {left: '$$', right: '$$', display: true},
+        {left: '$', right: '$', display: false}
+      ]
+    });"></script>
+
+  <!-- highlight.js v11.9.0 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/highlight.min.js"
+    onload="hljs.highlightAll();"></script>
+
+  <!-- Theme (apply before paint) -->
+  <script src="../assets/theme.js"></script>
+</head>
+<body class="post-page">
+
+  <nav>
+    <a href="/" class="logo">shubham</a>
+    <ul class="nav-right">
+      <li><a href="/posts">posts</a></li>
+      <li><a href="/#topics">topics</a></li>
+      <li><a href="/about.html">about</a></li>
+      <li>
+        <button class="theme-toggle" onclick="toggleTheme()">
+          <span class="theme-icon">◐</span>
+        </button>
+      </li>
+    </ul>
+  </nav>
+
+  <div class="post-header">
+    <div style="display:flex; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap;">
+      <span class="tag">attention</span>
+      <span class="tag">paper breakdown</span>
+      <span class="tag">pytorch</span>
+    </div>
+    <h1>Native Sparse Attention — Hardware-Efficient Sparsity</h1>
+    <div class="post-meta">
+      <span>Feb 22 2026</span>
+      <span>5 min read</span>
+      <span>Shubham Mishra</span>
+    </div>
+  </div>
+
+  <article>
+
+    <h2>Standard Attention</h2>
+
+    <p>
+      Full self-attention computes a weighted sum of values for every query
+      against every key. Given query matrix $Q$, key matrix $K$, and value
+      matrix $V$, each of shape $(N, d)$:
+    </p>
+
+    $$\text{Attention}(Q, K, V) = \text{softmax}\!\left(\frac{QK^T}{\sqrt{d}}\right)V$$
+
+    <p>
+      The cost is $O(N^2 d)$ in compute and $O(N^2)$ in memory for the
+      attention matrix. At sequence lengths of 128k tokens this becomes
+      the dominant bottleneck — not the FFN layers.
+    </p>
+
+    <h2>What NSA Changes</h2>
+
+    <p>
+      Native Sparse Attention (NSA) proposes three complementary sparse
+      patterns that are <em>hardware-native</em>: they map to contiguous
+      memory access and avoid the scatter/gather overhead that plagued
+      earlier sparse kernels.
+    </p>
+
+    <h3>1. Blockwise token selection</h3>
+
+    <p>
+      Rather than selecting individual tokens, NSA selects <em>blocks</em>
+      of $B$ consecutive tokens. A small scoring network picks the top-$k$
+      blocks per query, reducing the effective context to $k \cdot B$
+      tokens while keeping memory access patterns sequential.
+    </p>
+
+    <pre><code class="language-python">import torch
+import torch.nn.functional as F
+
+def blockwise_scores(q: torch.Tensor, k: torch.Tensor, block_size: int = 64):
+    """
+    q: (batch, heads, seq, d_head)
+    k: (batch, heads, seq, d_head)
+    Returns per-block importance scores.
+    """
+    B, H, N, D = q.shape
+    assert N % block_size == 0
+    num_blocks = N // block_size
+
+    # Pool keys within each block
+    k_blocks = k.view(B, H, num_blocks, block_size, D).mean(dim=3)  # (B,H,nb,D)
+
+    # Score each block for each query position
+    scores = torch.einsum('bhnd,bhmd->bhnm', q, k_blocks)  # (B,H,N,nb)
+    return scores / (D ** 0.5)
+</code></pre>
+
+    <h3>2. NSA gate mechanism</h3>
+
+    <p>
+      Each attention head learns a gate $g \in \{0,1\}^{N}$ (relaxed to
+      sigmoid during training) that suppresses non-selected blocks. The
+      gate is conditioned on a compressed representation of the full
+      context so it can make globally-aware selections.
+    </p>
+
+    <pre><code class="language-python">class NSAGate(torch.nn.Module):
+    def __init__(self, d_model: int, num_blocks: int):
+        super().__init__()
+        # Compress full context to fixed size
+        self.pool = torch.nn.AdaptiveAvgPool1d(num_blocks)
+        self.proj = torch.nn.Linear(d_model, num_blocks)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        x: (batch, seq, d_model)
+        Returns gate logits: (batch, num_blocks)
+        """
+        pooled = self.pool(x.transpose(1, 2)).transpose(1, 2)  # (B, nb, d)
+        return self.proj(pooled.mean(dim=1))                    # (B, nb)
+</code></pre>
+
+    <h3>3. Putting it together</h3>
+
+    <pre><code class="language-python">def nsa_forward(q, k, v, gate_logits, block_size=64, top_k=16):
+    """Simplified NSA forward pass."""
+    B, H, N, D = q.shape
+    num_blocks = N // block_size
+
+    # Select top-k blocks per query
+    block_scores = blockwise_scores(q, k, block_size)     # (B,H,N,nb)
+    gate = torch.sigmoid(gate_logits).unsqueeze(1).unsqueeze(2)  # broadcast
+    masked_scores = block_scores * gate
+
+    topk_idx = masked_scores.topk(top_k, dim=-1).indices  # (B,H,N,top_k)
+
+    # Gather selected key/value blocks (pseudo-code; real impl uses custom CUDA)
+    # ... gather k,v at topk_idx * block_size : (topk_idx+1) * block_size
+    # ... run standard attention over gathered tokens
+    # ... scatter-add outputs back to full sequence positions
+
+    return topk_idx  # placeholder
+</code></pre>
+
+    <h2>Complexity comparison</h2>
+
+    <p>
+      Standard attention vs NSA (selecting $k$ blocks of size $B$ from
+      sequence length $N$):
+    </p>
+
+    <ul>
+      <li>Standard: $O(N^2)$ — every query attends to every key</li>
+      <li>NSA: $O(N \cdot k \cdot B)$ — each query attends to $k$ blocks only</li>
+    </ul>
+
+    <p>
+      With $k = 16$, $B = 64$, $N = 131072$: standard requires
+      ~$1.7 \times 10^{10}$ ops per head; NSA requires ~$1.3 \times 10^8$ —
+      roughly a <strong>128× reduction</strong>.
+    </p>
+
+    <blockquote>
+      The key insight is that most attention mass is concentrated in a small
+      fraction of the context. NSA exploits this statistically without
+      paying the hardware penalty of unstructured sparsity.
+    </blockquote>
+
+    <h2>Current limitations</h2>
+
+    <p>
+      The block selection itself adds overhead. For short sequences the
+      crossover point where NSA beats flash attention is around 8k tokens.
+      The gating network also needs to be warm — early training steps can
+      see degraded quality until the gate learns meaningful patterns.
+    </p>
+
+  </article>
+
+  <div class="post-nav">
+    <a href="/">← all posts</a>
+    <a href="#">Flash Attention 3 — What Changed →</a>
+  </div>
+
+  <footer>
+    <span style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">© 2026 Shubham Mishra</span>
+    <div style="display:flex; gap:1.5rem;">
+      <a href="https://github.com/ShubhamMishra1611" style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">github</a>
+      <a href="https://twitter.com/" style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">twitter</a>
+    </div>
+  </footer>
+
+</body>
+</html>
