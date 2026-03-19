@@ -3,17 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>shubham — quanta-log</title>
+  <title>Shubham Mishra</title>
   <link rel="stylesheet" href="assets/style.css" />
   <script src="assets/theme.js"></script>
 </head>
 <body>
+
   <nav>
-    <a href="/" class="logo">shubham</a>
+    <a href="/" class="logo">shubham mishra</a>
     <ul class="nav-right">
-      <li><a href="/posts">posts</a></li>
-      <li><a href="/#topics">topics</a></li>
-      <li><a href="/about.html">about</a></li>
       <li>
         <button class="theme-toggle" onclick="toggleTheme()">
           <span class="theme-icon">◐</span>
@@ -22,99 +20,47 @@
     </ul>
   </nav>
 
-  <section class="intro">
-    <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1.2rem;">
-      <span class="live-dot"></span>
-      <span style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">writing</span>
-    </div>
-    <h1>Notes on <em>machine learning</em>,<br>Python &amp; things I'm building.</h1>
-    <p>I'm Shubham — I write about ML research, systems, and the occasional deep dive into papers that caught my attention. No newsletters, no fluff.</p>
-    <p>These are working notes. Some posts are polished, most are not. If something's wrong, I want to know.</p>
+  <!-- Hero -->
+  <section style="padding: 5rem 0 6rem;">
+    <h1 style="font-size: 3rem; font-weight: 300; letter-spacing: -0.035em; line-height: 1.15; margin-bottom: 1rem;">
+      Shubham Mishra
+    </h1>
+    <p style="font-size: 1.1rem; font-style: italic; color: var(--muted); margin: 0;">
+      More is coming.
+    </p>
   </section>
 
-  <section style="margin-bottom:3.5rem;">
-    <div class="section-label" style="margin-bottom:1rem;">featured</div>
-    <a href="posts/native-sparse-attention.html" class="featured">
-      <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:0.8rem;">
-        <span class="new-badge">NEW</span>
-        <span class="tag">attention</span>
-        <span class="tag">paper breakdown</span>
-        <span class="tag">pytorch</span>
-      </div>
-      <div style="font-size:1.05rem; color:var(--text); margin-bottom:0.45rem; font-weight:400;">Native Sparse Attention — Hardware-Efficient Sparsity</div>
-      <div style="font-size:0.82rem; color:var(--muted); font-family:'Geist Mono',monospace;">Feb 22 2026 · 5 min read</div>
-    </a>
+  <!-- Placeholder sections -->
+  <div style="border-top: 1px solid var(--border);"></div>
+
+  <section style="padding: 3.5rem 0;">
+    <div class="section-label" style="margin-bottom: 1.2rem;">Lorem Ipsum</div>
+    <p style="color: var(--subtle); font-size: 0.95rem; line-height: 1.85; max-width: 520px;">
+      Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation.
+    </p>
   </section>
 
-  <section style="margin-bottom:3.5rem;">
-    <div class="section-label" style="margin-bottom:0.5rem;">recent posts</div>
-    <ul class="post-list">
-      <li class="post-item">
-        <a href="#">Flash Attention 3 — What Changed</a>
-        <span style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">Jan 2026</span>
-      </li>
-      <li class="post-item">
-        <a href="#">Building a Toy Transformer from Scratch</a>
-        <span style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">Dec 2025</span>
-      </li>
-      <li class="post-item">
-        <a href="#">Why I Switched to Ruff</a>
-        <span style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">Nov 2025</span>
-      </li>
-    </ul>
+  <div style="border-top: 1px solid var(--border);"></div>
+
+  <section style="padding: 3.5rem 0;">
+    <div class="section-label" style="margin-bottom: 1.2rem;">Dolor Sit Amet</div>
+    <p style="color: var(--subtle); font-size: 0.95rem; line-height: 1.85; max-width: 520px;">
+      Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit.
+    </p>
   </section>
 
-  <section id="topics" style="margin-bottom:3.5rem;">
-    <div class="section-label" style="margin-bottom:0.9rem;">topics</div>
-    <div class="topics-grid">
-      <div class="topic-item">
-        <span>attention mechanisms</span>
-        <span style="font-family:'Geist Mono',monospace; font-size:0.68rem; color:var(--muted);">8</span>
-      </div>
-      <div class="topic-item">
-        <span>transformers</span>
-        <span style="font-family:'Geist Mono',monospace; font-size:0.68rem; color:var(--muted);">6</span>
-      </div>
-      <div class="topic-item">
-        <span>paper breakdowns</span>
-        <span style="font-family:'Geist Mono',monospace; font-size:0.68rem; color:var(--muted);">5</span>
-      </div>
-      <div class="topic-item">
-        <span>python</span>
-        <span style="font-family:'Geist Mono',monospace; font-size:0.68rem; color:var(--muted);">4</span>
-      </div>
-      <div class="topic-item">
-        <span>systems</span>
-        <span style="font-family:'Geist Mono',monospace; font-size:0.68rem; color:var(--muted);">3</span>
-      </div>
-      <div class="topic-item">
-        <span>tooling</span>
-        <span style="font-family:'Geist Mono',monospace; font-size:0.68rem; color:var(--muted);">3</span>
-      </div>
-    </div>
-  </section>
+  <div style="border-top: 1px solid var(--border);"></div>
 
-  <section style="margin-bottom:3.5rem;">
-    <div class="section-label" style="margin-bottom:0.9rem;">now</div>
-    <div class="now-block">
-      <p>Reading through the NSA paper. Experimenting with sparse attention kernels in Triton. Slowly rebuilding my dev environment around Nix.</p>
-    </div>
-  </section>
-
-  <section style="margin-bottom:3.5rem;">
-    <div class="section-label" style="margin-bottom:0.9rem;">stay updated</div>
-    <div class="subscribe-row">
-      <input type="email" class="sub-input" placeholder="your@email.com" />
-      <button onclick="handleSubscribe()">subscribe</button>
-    </div>
+  <section style="padding: 3.5rem 0;">
+    <div class="section-label" style="margin-bottom: 1.2rem;">Consectetur Adipiscing</div>
+    <p style="color: var(--subtle); font-size: 0.95rem; line-height: 1.85; max-width: 520px;">
+      Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Vestibulum tortor quam, feugiat vitae, ultricies eget, tempor sit amet, ante.
+    </p>
   </section>
 
   <footer>
     <span style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">© 2026 Shubham Mishra</span>
-    <div style="display:flex; gap:1.5rem;">
-      <a href="https://github.com/ShubhamMishra1611" style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">github</a>
-      <a href="https://twitter.com/" style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">twitter</a>
-    </div>
   </footer>
+
 </body>
 </html>
