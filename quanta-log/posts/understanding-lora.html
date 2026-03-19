@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Understanding LoRA — quanta-log</title>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="../assets/style.css" />
+
+  <!-- highlight.js v11.9.0 — theme-aware -->
+  <link id="hljs-theme" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+  <!-- Theme (apply before paint) -->
+  <script src="../assets/theme.js"></script>
+</head>
+<body class="post-page">
+
+  <nav>
+    <a href="/" class="logo">shubham</a>
+    <ul class="nav-right">
+      <li><a href="/">posts</a></li>
+      <li><a href="/#topics">topics</a></li>
+      <li><a href="#">about</a></li>
+      <li>
+        <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+          <svg class="theme-icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+          <svg class="theme-icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+      </li>
+    </ul>
+  </nav>
+
+  <div class="post-header">
+    <div style="display:flex; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap;">
+      <span class="tag">LoRA</span>
+      <span class="tag">fine-tuning</span>
+      <span class="tag">pytorch</span>
+    </div>
+    <h1>Understanding LoRA</h1>
+    <div class="post-meta">
+      <span>Apr 10 2024</span>
+      <span>8 min read</span>
+      <span>Shubham Mishra</span>
+    </div>
+  </div>
+
+  <article>
+
+    <p>
+      The domain of AI is expanding, and each sector is trying to leverage the power of AI in its system. We are witnessing fast-paced development and introduction of new LLMs, frameworks to handle them, finetuning them, and integrating them into existing systems, which is currently booming.
+    </p>
+
+    <p>
+      One of the promising methodologies that helps a lot nowadays is finetuning. Finetuning refers to training a pre-trained model (mainly those large models) on a new dataset specific to a task. This helps in adapting the model and making it efficient in that task.
+    </p>
+
+    <p>
+      Today, we will explore a fantastic technique called LoRA, from what this is to how to do it.
+    </p>
+
+    <p>
+      <strong>LoRA</strong>: Low-Rank Adaptation of Large Language Model. We will start by brushing some concepts of linear algebra.
+    </p>
+
+    <p>
+      <strong>Rank of a Matrix</strong>: The maximum number of linearly independent columns (or rows) of a matrix. For a full rank matrix, the rank equals the number of rows (or columns) in the matrix. A full-rank matrix is a matrix where all its rows and columns are linearly independent. So basically, no row or column in the matrix can be expressed as a linear combination of the other rows or columns.
+    </p>
+
+    <p>We can get the rank of a matrix using NumPy. Here are examples:</p>
+
+    <pre><code class="language-python">import numpy as np
+
+matrix = np.array([[1, 0, 0],
+                   [0, 1, 0],
+                   [0, 0, 1]])
+
+# Check the rank of the matrix
+rank = np.linalg.matrix_rank(matrix)
+print("Rank of the matrix:", rank)
+
+# Check the dimension of the matrix
+dimension = matrix.shape[0]
+print("Dimension of the matrix:", dimension)
+
+# Output
+# Rank of the matrix: 3
+# Dimension of the matrix: 3</code></pre>
+
+    <pre><code class="language-python">matrix = np.array([[1, 2, 3],
+                   [4, 5, 6],
+                   [7, 8, 9],
+                   [10, 11, 12]])
+
+# Check the rank of the matrix
+rank = np.linalg.matrix_rank(matrix)
+print("Rank of the matrix:", rank)
+
+# Check the dimensions of the matrix
+rows, cols = matrix.shape
+print("Number of rows:", rows)
+print("Number of columns:", cols)
+
+# Output
+# Rank of the matrix: 2
+# Number of rows: 4
+# Number of columns: 3</code></pre>
+
+    <h2>Low-Rank Approximation of Matrix</h2>
+
+    <p>
+      Low-rank approximation is the main idea that LoRA works upon. The idea is that we have a matrix <em>A</em> with rank <em>r</em>, then it can be decomposed into <em>B</em> and <em>C</em> such that A = <em>BC,</em> where <em>A</em> = <em>m × n, B = m × r, and C = r × n</em>.
+    </p>
+
+    <!-- ═══ Diagram: Low-Rank Matrix Decomposition ═══ -->
+    <figure style="margin:2rem 0; text-align:center;">
+      <svg viewBox="0 0 560 180" width="100%" style="max-width:560px;" xmlns="http://www.w3.org/2000/svg">
+        <!-- Matrix A (m×n) -->
+        <rect x="10" y="20" width="120" height="140" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1.5"/>
+        <text x="70" y="95" text-anchor="middle" fill="var(--text)" font-family="'Geist Mono',monospace" font-size="14" font-weight="500">A</text>
+        <text x="70" y="172" text-anchor="middle" fill="var(--muted)" font-family="'Geist Mono',monospace" font-size="10">m × n</text>
+        <!-- grid lines on A -->
+        <line x1="10" y1="55" x2="130" y2="55" stroke="var(--border)" stroke-width="0.5" opacity="0.5"/>
+        <line x1="10" y1="90" x2="130" y2="90" stroke="var(--border)" stroke-width="0.5" opacity="0.5"/>
+        <line x1="10" y1="125" x2="130" y2="125" stroke="var(--border)" stroke-width="0.5" opacity="0.5"/>
+        <line x1="50" y1="20" x2="50" y2="160" stroke="var(--border)" stroke-width="0.5" opacity="0.5"/>
+        <line x1="90" y1="20" x2="90" y2="160" stroke="var(--border)" stroke-width="0.5" opacity="0.5"/>
+
+        <!-- Equals sign -->
+        <text x="165" y="95" text-anchor="middle" fill="var(--subtle)" font-family="'Geist Mono',monospace" font-size="22">≈</text>
+
+        <!-- Matrix B (m×r) — thin tall -->
+        <rect x="200" y="20" width="50" height="140" rx="4" fill="none" stroke="var(--green)" stroke-width="1.5"/>
+        <text x="225" y="95" text-anchor="middle" fill="var(--green)" font-family="'Geist Mono',monospace" font-size="14" font-weight="500">B</text>
+        <text x="225" y="172" text-anchor="middle" fill="var(--muted)" font-family="'Geist Mono',monospace" font-size="10">m × r</text>
+
+        <!-- × sign -->
+        <text x="280" y="95" text-anchor="middle" fill="var(--subtle)" font-family="'Geist Mono',monospace" font-size="18">×</text>
+
+        <!-- Matrix C (r×n) — short wide -->
+        <rect x="310" y="50" width="120" height="50" rx="4" fill="none" stroke="#f59e0b" stroke-width="1.5"/>
+        <text x="370" y="80" text-anchor="middle" fill="#f59e0b" font-family="'Geist Mono',monospace" font-size="14" font-weight="500">C</text>
+        <text x="370" y="118" text-anchor="middle" fill="var(--muted)" font-family="'Geist Mono',monospace" font-size="10">r × n</text>
+
+        <!-- Annotation: r ≪ min(m,n) -->
+        <text x="480" y="80" text-anchor="middle" fill="var(--muted)" font-family="'Geist Mono',monospace" font-size="10">r ≪ min(m, n)</text>
+      </svg>
+      <figcaption style="font-family:'Geist Mono',monospace; font-size:0.68rem; color:var(--muted); margin-top:0.6rem;">A large matrix decomposed into two smaller matrices</figcaption>
+    </figure>
+
+    <p>
+      In mathematics, <strong>low-rank approximation</strong> is a minimization problem to bring the original matrix and approximating matrix closer (the closeness is measured by a given cost function), and we are subjected to the constraint that the approximating matrix has reduced rank <em>r</em>.
+    </p>
+
+    <p>
+      It is like summarizing an extensively detailed report into a few key points, such that the summary is still very close to the original report.
+    </p>
+
+    <p>
+      On <a href="https://en.wikipedia.org/wiki/Low-rank_approximation" class="text-link" target="_blank">Wikipedia</a>, this problem is structured as follows:
+    </p>
+
+    <p>
+      The solution is called the matrix approximation lemma or Eckart–Young–Mirsky theorem. The solution incorporates the logic of SVD.
+    </p>
+
+    <p>
+      Let the singular value decomposition of <em>D</em> be denoted as <em>𝐃</em>, where <em>Σ</em> = <em>diag</em>(<em>σ₁</em>, …, <em>σₘ</em>) is the <em>m</em> × <em>n</em> rectangular diagonal matrix with the singular values <em>σ₁</em> ≥ … ≥ <em>σₘ</em>. For a given <em>r</em> ∈ {<em>1</em>, …, <em>m</em>-<em>1</em>}, partition <em>U</em>, <em>Σ</em>, and <em>V</em> as follows:
+    </p>
+
+    <p>
+      where <em>U₁</em> is <em>m</em> × <em>r</em>, <em>Σ₁</em> is <em>r</em> × <em>r</em>, and <em>V₁</em> is <em>r</em> × <em>n</em>. Then, the rank-<em>r</em> matrix, obtained from the truncated singular value decomposition.
+    </p>
+
+    <p>This minimizer exists if and only if σᵣ₊₁ ≠ σᵣ.</p>
+
+    <p>The code corresponding to the above would look like this</p>
+
+    <pre><code class="language-python"># Let us say there are two matrix W and b.
+y = W@ x + b
+
+# Perform SVD on W #
+U, S, V = torch.svd(W)
+
+# For rank-r factorization, keep only the first r singular values (and corresponding columns of U and V)
+U_r = U[:, :r]
+S_r = torch.diag(S[:r])
+V_r = V[:, :r].t()  # Transpose V_r to get the right dimensions
+
+# Compute C = U_r * S_r and R = V_r
+C = U_r@S_r
+R = V_r
+# -------------------------------------------
+
+# Compute y' = CRx + b
+y_prime = (C@R)@x+ b</code></pre>
+
+    <pre><code>OUTPUT:
+
+Original y using W:
+ tensor([ 7.2684e+00,  2.3162e+00,  7.7151e+00, -1.0446e+01, -8.1639e-03,
+        -3.7270e+00, -1.1146e+01,  2.0207e+00, -9.6258e+00, -4.1163e+00])
+
+y' computed using CR:
+ tensor([ 7.2684e+00,  2.3162e+00,  7.7151e+00, -1.0446e+01, -8.1638e-03,
+        -3.7270e+00, -1.1146e+01,  2.0207e+00, -9.6258e+00, -4.1163e+00])
+
+Checking the equality True
+
+Total parameters of W:
+ 100
+
+Total parameters of C and R :
+ 40</code></pre>
+
+    <p>Pay attention to the point that both output y has nearly the same value.</p>
+
+    <p>Although we won't be directly using this result, it serves as proof that the concept is practical.</p>
+
+    <!-- ═══ Diagram: Parameter Count Comparison ═══ -->
+    <figure style="margin:2.5rem 0; text-align:center;">
+      <svg viewBox="0 0 480 200" width="100%" style="max-width:480px;" xmlns="http://www.w3.org/2000/svg">
+        <!-- Title -->
+        <text x="240" y="18" text-anchor="middle" fill="var(--subtle)" font-family="'Geist Mono',monospace" font-size="10" letter-spacing="0.08em">PARAMETER COUNT COMPARISON</text>
+
+        <!-- Full W bar -->
+        <rect x="140" y="42" width="300" height="36" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+        <!-- filled portion -->
+        <rect x="140" y="42" width="300" height="36" rx="4" fill="var(--muted)" opacity="0.25"/>
+        <text x="60" y="65" text-anchor="middle" fill="var(--text)" font-family="'Geist Mono',monospace" font-size="11">Full W</text>
+        <text x="290" y="65" text-anchor="middle" fill="var(--text)" font-family="'Geist Mono',monospace" font-size="12" font-weight="500">d × k params</text>
+
+        <!-- Example values -->
+        <text x="448" y="65" text-anchor="start" fill="var(--muted)" font-family="'Geist Mono',monospace" font-size="9"></text>
+
+        <!-- LoRA bar (much smaller) -->
+        <rect x="140" y="100" width="48" height="36" rx="4" fill="none" stroke="var(--green)" stroke-width="1.5"/>
+        <text x="60" y="123" text-anchor="middle" fill="var(--green)" font-family="'Geist Mono',monospace" font-size="11">LoRA</text>
+        <text x="164" y="123" text-anchor="middle" fill="var(--green)" font-family="'Geist Mono',monospace" font-size="10" font-weight="500">A+B</text>
+
+        <!-- dimension labels for LoRA -->
+        <text x="210" y="118" text-anchor="start" fill="var(--muted)" font-family="'Geist Mono',monospace" font-size="10">d×r + r×k params</text>
+
+        <!-- Example: 256×256 vs rank-8 -->
+        <text x="140" y="162" text-anchor="start" fill="var(--muted)" font-family="'Geist Mono',monospace" font-size="9.5">Example: d=256, k=256, r=8</text>
+        <text x="140" y="178" text-anchor="start" fill="var(--muted)" font-family="'Geist Mono',monospace" font-size="9.5">Full: <tspan fill="var(--text)">65,536</tspan>   LoRA: <tspan fill="var(--green)">4,096</tspan>   → <tspan fill="var(--green)">16× fewer</tspan></text>
+      </svg>
+      <figcaption style="font-family:'Geist Mono',monospace; font-size:0.68rem; color:var(--muted); margin-top:0.6rem;">LoRA dramatically reduces trainable parameters</figcaption>
+    </figure>
+
+    <h2>Incorporating LoRA</h2>
+
+    <p>
+      In a given model, let's say we have a matrix represented by <em>W₀</em> (with dimension (𝑑×𝑘)); when we fine-tune this model, the update to this weight matrix, denoted as <em>Δ</em>𝑊 is constrained to <em>BA,</em> where 𝐵=(𝑑×𝑟) and 𝐴=(𝑟×𝑘) and 𝑟 ≪ min(𝑑, 𝑘).
+    </p>
+
+    <p>
+      In simpler terms, during fine-tuning, instead of directly updating the weight matrix by Δ𝑊, we update it by a new matrix <em>BA,</em> where 𝐵 and 𝐴 are smaller matrices, ensuring that the update is constrained to a smaller subset of the original weight matrix.
+    </p>
+
+    <p>
+      During training, original weights or 𝑊ₒ are frozen, while <em>A</em> and <em>B</em> are trainable. So the end equation looks like this: <em>h = W₀x + ΔWx = W₀x + BAx</em>
+    </p>
+
+    <!-- ═══ Diagram: LoRA Architecture ═══ -->
+    <figure style="margin:2rem 0; text-align:center;">
+      <svg viewBox="0 0 420 320" width="100%" style="max-width:420px;" xmlns="http://www.w3.org/2000/svg">
+        <!-- Input x -->
+        <rect x="170" y="270" width="80" height="32" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1.5"/>
+        <text x="210" y="291" text-anchor="middle" fill="var(--text)" font-family="'Geist Mono',monospace" font-size="13" font-weight="500">x</text>
+
+        <!-- Main path: W₀ (frozen) -->
+        <line x1="210" y1="270" x2="210" y2="155" stroke="var(--border)" stroke-width="1.5" stroke-dasharray="4 3"/>
+        <rect x="160" y="115" width="100" height="40" rx="4" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.5"/>
+        <text x="210" y="140" text-anchor="middle" fill="var(--muted)" font-family="'Geist Mono',monospace" font-size="12">W₀ (frozen)</text>
+        <!-- lock icon -->
+        <text x="268" y="140" fill="var(--muted)" font-size="14">🔒</text>
+
+        <!-- LoRA bypass path -->
+        <!-- line down from x to A -->
+        <line x1="210" y1="270" x2="80" y2="270" stroke="var(--green)" stroke-width="1.5"/>
+        <line x1="80" y1="270" x2="80" y2="220" stroke="var(--green)" stroke-width="1.5"/>
+
+        <!-- A matrix -->
+        <rect x="45" y="180" width="70" height="40" rx="4" fill="none" stroke="var(--green)" stroke-width="1.5"/>
+        <text x="80" y="205" text-anchor="middle" fill="var(--green)" font-family="'Geist Mono',monospace" font-size="12" font-weight="500">A  (r×k)</text>
+
+        <!-- line A to B -->
+        <line x1="80" y1="180" x2="80" y2="155" stroke="var(--green)" stroke-width="1.5"/>
+
+        <!-- B matrix -->
+        <rect x="45" y="115" width="70" height="40" rx="4" fill="none" stroke="var(--green)" stroke-width="1.5"/>
+        <text x="80" y="140" text-anchor="middle" fill="var(--green)" font-family="'Geist Mono',monospace" font-size="12" font-weight="500">B  (d×r)</text>
+
+        <!-- α scaling -->
+        <line x1="80" y1="115" x2="80" y2="85" stroke="var(--green)" stroke-width="1.5"/>
+        <circle cx="80" cy="78" r="14" fill="none" stroke="var(--green)" stroke-width="1.5"/>
+        <text x="80" y="83" text-anchor="middle" fill="var(--green)" font-family="'Geist Mono',monospace" font-size="11">α</text>
+
+        <!-- merge at + -->
+        <line x1="80" y1="64" x2="80" y2="45" stroke="var(--green)" stroke-width="1.5"/>
+        <line x1="80" y1="45" x2="195" y2="45" stroke="var(--green)" stroke-width="1.5"/>
+
+        <!-- W₀ path up -->
+        <line x1="210" y1="115" x2="210" y2="45" stroke="var(--border)" stroke-width="1.5" stroke-dasharray="4 3"/>
+
+        <!-- Sum circle -->
+        <circle cx="210" cy="45" r="16" fill="var(--surface)" stroke="var(--text)" stroke-width="1.5"/>
+        <text x="210" y="50" text-anchor="middle" fill="var(--text)" font-family="'Geist Mono',monospace" font-size="16" font-weight="500">+</text>
+
+        <!-- Output h -->
+        <line x1="210" y1="29" x2="210" y2="10" stroke="var(--text)" stroke-width="1.5"/>
+        <text x="230" y="16" text-anchor="start" fill="var(--text)" font-family="'Geist Mono',monospace" font-size="12" font-weight="500">h</text>
+
+        <!-- Labels -->
+        <text x="340" y="140" fill="var(--muted)" font-family="'Geist Mono',monospace" font-size="9" opacity="0.8">pretrained weights</text>
+        <text x="340" y="152" fill="var(--muted)" font-family="'Geist Mono',monospace" font-size="9" opacity="0.8">(not updated)</text>
+        <text x="340" y="200" fill="var(--green)" font-family="'Geist Mono',monospace" font-size="9" opacity="0.8">trainable low-rank</text>
+        <text x="340" y="212" fill="var(--green)" font-family="'Geist Mono',monospace" font-size="9" opacity="0.8">adaptation matrices</text>
+      </svg>
+      <figcaption style="font-family:'Geist Mono',monospace; font-size:0.68rem; color:var(--muted); margin-top:0.6rem;">LoRA: frozen pretrained path + trainable low-rank bypass</figcaption>
+    </figure>
+
+    <p>
+      In the LoRA paper, they weigh the Delta matrix with an α parameter. The variable α helps in defining how much the effect <em>ΔW</em> will have.
+    </p>
+
+    <p>Now, let's move to the implementation part of LoRA.</p>
+
+    <p>We do have PEFT from HuggingFace, and we can use it directly, but let's just write it from scratch because why not?</p>
+
+    <p>First, let us define a simple FFN:</p>
+
+    <pre><code class="language-python">import torch
+class FFN(torch.nn.Module):
+  def __init__(self, in_dim, out_dim, hid_dim = 32):
+    super().__init__()
+    self.l1 = torch.nn.Linear(
+        in_dim, hid_dim
+    )
+    self.l2 = torch.nn.Linear(
+        hid_dim, out_dim
+    )
+    self.relu_l = torch.nn.ReLU()
+
+  def forward(self, x):
+    x = self.l1(x)
+    x = self.l2(x)
+    x = self.relu_l(x)
+    return x
+
+model = FFN(256, 10)</code></pre>
+
+    <p>Our model looks like this:</p>
+
+    <pre><code>FFN(
+  (l1): Linear(in_features=256, out_features=32, bias=True)
+  (l2): Linear(in_features=32, out_features=10, bias=True)
+  (relu_l): ReLU()
+)</code></pre>
+
+    <p>Let's define a new layer now:</p>
+
+    <pre><code class="language-python">class LoRA_layer(torch.nn.Module):
+  def __init__(self, in_dim, out_dim, rank):
+    super().__init__()
+    std_dev = 1/torch.sqrt(torch.tensor(rank).float())
+    self.A = torch.nn.Parameter(
+        torch.randn(in_dim, rank)*std_dev
+      )
+    self.B = torch.nn.Parameter(
+        torch.zeros(rank, out_dim)
+      )
+
+  def forward(self, x):
+    x = x @ self.A @ self.B
+    return x</code></pre>
+
+    <p>Pay attention to the fact that <em>A</em> matrix is scaled down by <em>std_dev</em>, as discussed in the <a href="https://arxiv.org/pdf/2106.09685.pdf" class="text-link" target="_blank">original paper</a>.</p>
+
+    <pre><code class="language-python">class LoRAonLinear(torch.nn.Module):
+    def __init__(self, linear, rank, alpha):
+        super().__init__()
+        self.linear = linear
+        self.lora = LoRA_layer(
+            linear.in_features, linear.out_features, rank
+        )
+        self.alpha = alpha
+
+    def forward(self, x):
+        return self.linear(x) + self.alpha * self.lora(x)</code></pre>
+
+    <p>Now let's assign LoRA on linear,</p>
+
+    <pre><code class="language-python">from functools import partial
+assigner = partial(LoRAonLinear, rank=8, alpha=0.5)
+model_layer = [layer for layer in model.modules() if isinstance(layer, torch.nn.Linear)]
+
+for layer in model_layer:
+    layer = assigner(layer)
+    print(layer)</code></pre>
+
+    <pre><code>LoRAonLinear(
+  (linear): Linear(in_features=256, out_features=32, bias=True)
+  (lora): LoRA_layer()
+)
+LoRAonLinear(
+  (linear): Linear(in_features=32, out_features=10, bias=True)
+  (lora): LoRA_layer()
+)</code></pre>
+
+    <p>LoRA is now embedded into the model. Now, let's briefly apply it to an actual big model; here, we will look into the "bert-base-uncased" model and try to use Lora on a linear layer, basically on query, key, and value.</p>
+
+    <!-- ═══ Diagram: LoRA in Transformer Attention ═══ -->
+    <figure style="margin:2rem 0; text-align:center;">
+      <svg viewBox="0 0 500 300" width="100%" style="max-width:500px;" xmlns="http://www.w3.org/2000/svg">
+        <!-- Title -->
+        <text x="250" y="18" text-anchor="middle" fill="var(--subtle)" font-family="'Geist Mono',monospace" font-size="10" letter-spacing="0.08em">SELF-ATTENTION BLOCK WITH LoRA</text>
+
+        <!-- Input -->
+        <rect x="190" y="230" width="120" height="28" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1.5"/>
+        <text x="250" y="249" text-anchor="middle" fill="var(--text)" font-family="'Geist Mono',monospace" font-size="11">hidden states</text>
+
+        <!-- Three paths splitting from input -->
+        <line x1="250" y1="230" x2="250" y2="210" stroke="var(--border)" stroke-width="1"/>
+        <line x1="80" y1="210" x2="420" y2="210" stroke="var(--border)" stroke-width="1"/>
+
+        <!-- Drop lines into each group -->
+        <line x1="80" y1="210" x2="80" y2="190" stroke="var(--border)" stroke-width="1"/>
+        <line x1="250" y1="210" x2="250" y2="190" stroke="var(--border)" stroke-width="1"/>
+        <line x1="420" y1="210" x2="420" y2="190" stroke="var(--border)" stroke-width="1"/>
+
+        <!-- ══ Q group ══ -->
+        <!-- Split into W_q and LoRA -->
+        <line x1="80" y1="190" x2="80" y2="180" stroke="var(--border)" stroke-width="1"/>
+        <line x1="46" y1="180" x2="114" y2="180" stroke="var(--border)" stroke-width="0.8"/>
+        <line x1="46" y1="180" x2="46" y2="170" stroke="var(--green)" stroke-width="1"/>
+        <line x1="114" y1="180" x2="114" y2="170" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 2"/>
+        <!-- LoRA adapter Q -->
+        <rect x="22" y="125" width="48" height="44" rx="3" fill="none" stroke="var(--green)" stroke-width="1.5"/>
+        <text x="46" y="144" text-anchor="middle" fill="var(--green)" font-family="'Geist Mono',monospace" font-size="8.5" font-weight="500">A_q</text>
+        <text x="46" y="160" text-anchor="middle" fill="var(--green)" font-family="'Geist Mono',monospace" font-size="8.5" font-weight="500">B_q</text>
+        <!-- W_q -->
+        <rect x="78" y="125" width="72" height="44" rx="4" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.5"/>
+        <text x="114" y="152" text-anchor="middle" fill="var(--text)" font-family="'Geist Mono',monospace" font-size="12">W_q</text>
+        <!-- lines up from both -->
+        <line x1="46" y1="125" x2="46" y2="105" stroke="var(--green)" stroke-width="1"/>
+        <line x1="114" y1="125" x2="114" y2="105" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 2"/>
+        <!-- + merge -->
+        <circle cx="80" cy="98" r="9" fill="var(--surface)" stroke="var(--text)" stroke-width="1"/>
+        <text x="80" y="102" text-anchor="middle" fill="var(--text)" font-family="'Geist Mono',monospace" font-size="12">+</text>
+        <line x1="46" y1="105" x2="71" y2="98" stroke="var(--green)" stroke-width="1"/>
+        <line x1="114" y1="105" x2="89" y2="98" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 2"/>
+        <!-- Q label -->
+        <text x="80" y="78" text-anchor="middle" fill="var(--text)" font-family="'Geist Mono',monospace" font-size="11" font-weight="500">Q</text>
+        <line x1="80" y1="89" x2="80" y2="82" stroke="var(--border)" stroke-width="1"/>
+
+        <!-- ══ K group ══ -->
+        <line x1="250" y1="190" x2="250" y2="180" stroke="var(--border)" stroke-width="1"/>
+        <line x1="216" y1="180" x2="284" y2="180" stroke="var(--border)" stroke-width="0.8"/>
+        <line x1="216" y1="180" x2="216" y2="170" stroke="var(--green)" stroke-width="1"/>
+        <line x1="284" y1="180" x2="284" y2="170" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 2"/>
+        <!-- LoRA adapter K -->
+        <rect x="192" y="125" width="48" height="44" rx="3" fill="none" stroke="var(--green)" stroke-width="1.5"/>
+        <text x="216" y="144" text-anchor="middle" fill="var(--green)" font-family="'Geist Mono',monospace" font-size="8.5" font-weight="500">A_k</text>
+        <text x="216" y="160" text-anchor="middle" fill="var(--green)" font-family="'Geist Mono',monospace" font-size="8.5" font-weight="500">B_k</text>
+        <!-- W_k -->
+        <rect x="248" y="125" width="72" height="44" rx="4" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.5"/>
+        <text x="284" y="152" text-anchor="middle" fill="var(--text)" font-family="'Geist Mono',monospace" font-size="12">W_k</text>
+        <!-- lines up -->
+        <line x1="216" y1="125" x2="216" y2="105" stroke="var(--green)" stroke-width="1"/>
+        <line x1="284" y1="125" x2="284" y2="105" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 2"/>
+        <!-- + merge -->
+        <circle cx="250" cy="98" r="9" fill="var(--surface)" stroke="var(--text)" stroke-width="1"/>
+        <text x="250" y="102" text-anchor="middle" fill="var(--text)" font-family="'Geist Mono',monospace" font-size="12">+</text>
+        <line x1="216" y1="105" x2="241" y2="98" stroke="var(--green)" stroke-width="1"/>
+        <line x1="284" y1="105" x2="259" y2="98" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 2"/>
+        <!-- K label -->
+        <text x="250" y="78" text-anchor="middle" fill="var(--text)" font-family="'Geist Mono',monospace" font-size="11" font-weight="500">K</text>
+        <line x1="250" y1="89" x2="250" y2="82" stroke="var(--border)" stroke-width="1"/>
+
+        <!-- ══ V group ══ -->
+        <line x1="420" y1="190" x2="420" y2="180" stroke="var(--border)" stroke-width="1"/>
+        <line x1="386" y1="180" x2="454" y2="180" stroke="var(--border)" stroke-width="0.8"/>
+        <line x1="386" y1="180" x2="386" y2="170" stroke="var(--green)" stroke-width="1"/>
+        <line x1="454" y1="180" x2="454" y2="170" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 2"/>
+        <!-- LoRA adapter V -->
+        <rect x="362" y="125" width="48" height="44" rx="3" fill="none" stroke="var(--green)" stroke-width="1.5"/>
+        <text x="386" y="144" text-anchor="middle" fill="var(--green)" font-family="'Geist Mono',monospace" font-size="8.5" font-weight="500">A_v</text>
+        <text x="386" y="160" text-anchor="middle" fill="var(--green)" font-family="'Geist Mono',monospace" font-size="8.5" font-weight="500">B_v</text>
+        <!-- W_v -->
+        <rect x="418" y="125" width="72" height="44" rx="4" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.5"/>
+        <text x="454" y="152" text-anchor="middle" fill="var(--text)" font-family="'Geist Mono',monospace" font-size="12">W_v</text>
+        <!-- lines up -->
+        <line x1="386" y1="125" x2="386" y2="105" stroke="var(--green)" stroke-width="1"/>
+        <line x1="454" y1="125" x2="454" y2="105" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 2"/>
+        <!-- + merge -->
+        <circle cx="420" cy="98" r="9" fill="var(--surface)" stroke="var(--text)" stroke-width="1"/>
+        <text x="420" y="102" text-anchor="middle" fill="var(--text)" font-family="'Geist Mono',monospace" font-size="12">+</text>
+        <line x1="386" y1="105" x2="411" y2="98" stroke="var(--green)" stroke-width="1"/>
+        <line x1="454" y1="105" x2="429" y2="98" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 2"/>
+        <!-- V label -->
+        <text x="420" y="78" text-anchor="middle" fill="var(--text)" font-family="'Geist Mono',monospace" font-size="11" font-weight="500">V</text>
+        <line x1="420" y1="89" x2="420" y2="82" stroke="var(--border)" stroke-width="1"/>
+
+        <!-- Attention output -->
+        <line x1="80" y1="72" x2="80" y2="50" stroke="var(--border)" stroke-width="1"/>
+        <line x1="250" y1="72" x2="250" y2="50" stroke="var(--border)" stroke-width="1"/>
+        <line x1="420" y1="72" x2="420" y2="50" stroke="var(--border)" stroke-width="1"/>
+        <line x1="80" y1="50" x2="420" y2="50" stroke="var(--border)" stroke-width="1"/>
+        <line x1="250" y1="50" x2="250" y2="40" stroke="var(--border)" stroke-width="1"/>
+        <text x="250" y="36" text-anchor="middle" fill="var(--subtle)" font-family="'Geist Mono',monospace" font-size="10">→ Attention(Q, K, V)</text>
+
+        <!-- Legend -->
+        <line x1="120" y1="285" x2="140" y2="285" stroke="var(--border)" stroke-width="1.5" stroke-dasharray="3 2"/>
+        <text x="145" y="288" text-anchor="start" fill="var(--muted)" font-family="'Geist Mono',monospace" font-size="8.5">frozen weights</text>
+        <line x1="270" y1="285" x2="290" y2="285" stroke="var(--green)" stroke-width="1.5"/>
+        <text x="295" y="288" text-anchor="start" fill="var(--green)" font-family="'Geist Mono',monospace" font-size="8.5">LoRA adapters (trainable)</text>
+      </svg>
+      <figcaption style="font-family:'Geist Mono',monospace; font-size:0.68rem; color:var(--muted); margin-top:0.6rem;">LoRA adapters attached to Q, K, V projections in each attention layer</figcaption>
+    </figure>
+
+    <pre><code class="language-python">from transformers import AutoTokenizer
+from transformers import Trainer, TrainingArguments
+from datasets import load_dataset
+from torch.utils.data import DataLoader
+import torch
+
+# load dataset
+dataset = load_dataset('imdb')
+tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
+
+def tokenize_function(examples):
+    return tokenizer(examples['text'], padding='max_length', truncation=True)
+
+dataset = dataset.map(tokenize_function, batched=True)
+dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'label'])
+
+# create dataloader
+train_dataloader = DataLoader(dataset['train'], batch_size=8, shuffle=True)
+val_dataloader = DataLoader(dataset['test'], batch_size=8)
+
+# create model
+model = AutoModelForSequenceClassification.from_pretrained('bert-base-uncased', num_labels=2)
+
+from functools import partial
+assign_lora = partial(LoRAonLinear, rank=lora_r, alpha=lora_alpha)
+
+for layer in model.bert.encoder.layer:
+    if lora_query:
+        layer.attention.self.query = assign_lora(layer.attention.self.query)
+    # do the same for key and value
+
+# create training arguments
+training_args = TrainingArguments(
+    output_dir='./results',
+    num_train_epochs=3,
+    per_device_train_batch_size=8,
+    per_device_eval_batch_size=8,
+    warmup_steps=500,
+    weight_decay=0.01,
+    logging_dir='./logs',
+    logging_steps=10
+)
+
+# create trainer
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=dataset['train'],
+    eval_dataset=dataset['test']
+)
+
+# train model
+trainer.train()
+
+# evaluate model
+trainer.evaluate()</code></pre>
+
+    <p>With this, we can fine-tune our model for a new task.</p>
+
+    <p>
+      NOTE: One thing mentioned in the paper is that it is not anticipated that small <em>r</em> will work on every task. So if the downstream task were in a different language than one used for pre-training, <em>r = dₘ</em> (dimension of the model) will certainly outperform LoRA with a small <em>r</em>, which means retraining the entire model will perform better.
+    </p>
+
+    <h2>Conclusion</h2>
+
+    <p>
+      We saw that LoRA, indeed, is a very versatile technique, where you can efficiently train your model for a specific task; we also easily change from one particular task to another just by simply replacing AB with a new task CD, with little memory overhead.
+    </p>
+
+    <p>
+      The exploration of LoRA for fine-tuning Large Language Models opens up new avenues in the field of ML and NLP. As we continue to push the boundaries of what's possible with LLMs, techniques like LoRA will undoubtedly play a significant role in shaping the future of this exciting field.
+    </p>
+
+    <h2>Further Reading and References</h2>
+
+    <ul>
+      <li><a href="https://towardsdatascience.com/implementing-lora-from-scratch-20f838b046f1" class="text-link" target="_blank">Implementing LoRA from Scratch</a></li>
+      <li><a href="https://lightning.ai/lightning-ai/studios/code-lora-from-scratch" class="text-link" target="_blank">https://lightning.ai/lightning-ai/studios/code-lora-from-scratch</a></li>
+      <li><a href="https://arxiv.org/pdf/2106.09685.pdf" class="text-link" target="_blank">Original Paper</a></li>
+      <li><a href="https://en.wikipedia.org/wiki/Low-rank_approximation" class="text-link" target="_blank">Low-rank approximation</a></li>
+    </ul>
+
+    <p>Happy Learning :)</p>
+
+  </article>
+
+  <div class="post-nav">
+    <a href="/">← all posts</a>
+    <a href="native-sparse-attention.html">Native Sparse Attention →</a>
+  </div>
+
+  <footer>
+    <span style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">© 2026 Shubham Mishra</span>
+    <div style="display:flex; gap:1.5rem;">
+      <a href="https://github.com/ShubhamMishra1611" style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">github</a>
+      <a href="#" style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">twitter</a>
+    </div>
+  </footer>
+
+  <script>hljs.highlightAll();</script>
+</body>
+</html>

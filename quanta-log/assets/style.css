@@ -567,10 +567,23 @@ footer {
 .post-page article pre {
   background: var(--code-bg);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 1.2rem 1.4rem;
+  border-radius: 8px;
+  padding: 2.8rem 1.4rem 1.2rem;
   overflow-x: auto;
   margin: 1.4rem 0;
+  position: relative;
+}
+
+.post-page article pre::before {
+  content: '';
+  position: absolute;
+  top: 0.9rem;
+  left: 1.2rem;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 18px 0 0 #febc2e, 36px 0 0 #28c840;
 }
 
 .post-page article pre code {
@@ -578,6 +591,18 @@ footer {
   border: none;
   padding: 0;
   font-size: 0.85rem;
+  color: var(--text);
+}
+
+/* let highlight.js token colors override */
+.post-page article pre code.hljs {
+  background: transparent;
+  padding: 0;
+}
+
+/* theme-aware highlight.js overrides for light mode */
+[data-theme="light"] .post-page article pre code.hljs {
+  color: #24292e;
 }
 
 .post-page article blockquote {
