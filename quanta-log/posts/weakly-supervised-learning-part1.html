@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Introduction to Weakly Supervision Learning: Part 1 — quanta-log</title>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="../assets/style.css" />
+
+  <!-- KaTeX -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+    onload="renderMathInElement(document.body, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}]});"></script>
+
+  <!-- highlight.js v11.9.0 -->
+  <link id="hljs-theme" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+  <!-- Theme (apply before paint) -->
+  <script src="../assets/theme.js"></script>
+</head>
+<body class="post-page">
+
+  <nav>
+    <a href="/" class="logo">shubham</a>
+    <ul class="nav-right">
+      <li><a href="/posts">posts</a></li>
+      <li><a href="/#topics">topics</a></li>
+      <li><a href="/about.html">about</a></li>
+      <li>
+        <button class="theme-toggle" onclick="toggleTheme()">
+          <svg class="theme-icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+          <svg class="theme-icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+      </li>
+    </ul>
+  </nav>
+
+  <div class="post-header">
+    <div style="display:flex; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap;">
+      <span class="tag">machine-learning</span>
+      <span class="tag">weak-supervision</span>
+      <span class="tag">active-learning</span>
+    </div>
+    <h1>Introduction to Weakly Supervision Learning: Part 1</h1>
+    <div class="post-meta">
+      <span>May 29 2024</span>
+      <span>10 min read</span>
+      <span>Shubham Mishra</span>
+    </div>
+  </div>
+
+  <article>
+
+    <h2>We already have Supervised Learning</h2>
+
+    <p>
+      Supervised learning is a fundamental paradigm in machine learning where we train models to make predictions based on labeled data. This approach provides the model with input-output pairs (features and corresponding labels) during training. The goal is for the model to learn a mapping from inputs to outputs, allowing it to generalize well to unseen examples.
+    </p>
+
+    <p>
+      Key characteristics of supervised learning include:<br>
+      <strong>Labeled Data:</strong> Supervised learning relies on having access to a dataset where each example is associated with a known label. For instance, in image classification, each image is labeled with a specific class (e.g., "cat" or "dog").<br>
+      <strong>Predictive Modelling:</strong> The model learns patterns from the labeled data and uses them to predict labels for new, unseen data points. Standard algorithms include decision trees, neural networks, and linear regression.<br>
+      <strong>Loss Function Optimization:</strong> During training, the model minimizes a loss function (such as mean squared error or cross-entropy) to improve its predictions.
+    </p>
+
+    <p>
+      While supervised learning has been successful in various applications (such as image recognition, natural language processing, and recommendation systems), it has some limitations; one of them is :
+    </p>
+
+    <h3>Data Annotation Costs</h3>
+
+    <p>
+      Data annotation can be costly because it relies on human workers to ensure accuracy and quality, especially for complex tasks that need detailed understanding. This process is time-consuming and expensive, as it usually involves manually labeling large datasets. High-quality annotation is essential for training effective AI models, which increases the overall cost. The quality of the labels greatly affects model performance; incorrect or biased labels can lead to poor results.
+    </p>
+
+    <p>
+      Let's delve into this scenario where we face challenges with supervised learning due to limited data, high annotation costs, or noisy labels. In such situations, weakly supervised learning emerges as a valuable alternative.
+    </p>
+
+    <h2>Weakly Supervised Learning: A Solution Beyond Traditional Supervision</h2>
+
+    <p>
+      Weakly supervision serves in the scenario where we have limited or noisy supervision. As has been described on Wikipedia, I will just brief it out:<br>
+      <em>Weakly supervised learning is a machine learning paradigm designed to efficiently leverage a combination of small amounts of high-quality labeled data and large quantities of unlabeled or imprecisely labeled data.</em>
+    </p>
+
+    <p>
+      Now, our weak supervision has three types:<br>
+      1. Incomplete supervision<br>
+      2. Inexact supervision<br>
+      3. Inaccurate supervision
+    </p>
+
+    <!-- SVG: Supervision Taxonomy -->
+    <svg viewBox="0 0 540 280" xmlns="http://www.w3.org/2000/svg" style="width:100%; max-width:540px; margin:2rem auto; display:block;">
+      <style>
+        .tax-label { font-family: 'Geist Mono', monospace; font-size: 10px; fill: var(--muted); }
+        .tax-title { font-family: 'Geist Mono', monospace; font-size: 12px; fill: var(--text); font-weight: 600; }
+        .tax-sub   { font-family: 'Geist Mono', monospace; font-size: 10px; fill: var(--muted); }
+        .tax-green { fill: var(--green); }
+      </style>
+
+      <!-- Root node -->
+      <rect x="150" y="10" width="240" height="40" rx="8" fill="var(--surface)" stroke="var(--green)" stroke-width="2"/>
+      <text x="270" y="35" class="tax-title" text-anchor="middle">Weakly Supervised Learning</text>
+
+      <!-- Branches -->
+      <line x1="210" y1="50" x2="90" y2="100" stroke="var(--border)" stroke-width="1.5"/>
+      <line x1="270" y1="50" x2="270" y2="100" stroke="var(--border)" stroke-width="1.5"/>
+      <line x1="330" y1="50" x2="450" y2="100" stroke="var(--border)" stroke-width="1.5"/>
+
+      <!-- Incomplete Supervision -->
+      <rect x="10" y="100" width="160" height="36" rx="6" fill="var(--surface)" stroke="var(--green)" stroke-width="1.5"/>
+      <text x="90" y="123" class="tax-title" text-anchor="middle">Incomplete</text>
+
+      <!-- Incomplete sub-branches -->
+      <line x1="50" y1="136" x2="50" y2="160" stroke="var(--border)" stroke-width="1"/>
+      <line x1="130" y1="136" x2="130" y2="160" stroke="var(--border)" stroke-width="1"/>
+
+      <rect x="5" y="160" width="90" height="50" rx="5" fill="var(--code-bg)" stroke="var(--border)" stroke-width="1"/>
+      <text x="50" y="180" class="tax-title" text-anchor="middle" font-size="10">Active</text>
+      <text x="50" y="192" class="tax-title" text-anchor="middle" font-size="10">Learning</text>
+      <text x="50" y="205" class="tax-sub" text-anchor="middle">query oracle</text>
+
+      <rect x="105" y="160" width="90" height="50" rx="5" fill="var(--code-bg)" stroke="var(--border)" stroke-width="1"/>
+      <text x="150" y="180" class="tax-title" text-anchor="middle" font-size="10">Semi-supervised</text>
+      <text x="150" y="192" class="tax-title" text-anchor="middle" font-size="10">Learning</text>
+      <text x="150" y="205" class="tax-sub" text-anchor="middle">use unlabeled</text>
+
+      <!-- Inexact Supervision -->
+      <rect x="200" y="100" width="140" height="36" rx="6" fill="var(--surface)" stroke="var(--border)" stroke-width="1.5"/>
+      <text x="270" y="123" class="tax-title" text-anchor="middle">Inexact</text>
+
+      <rect x="210" y="160" width="120" height="50" rx="5" fill="var(--code-bg)" stroke="var(--border)" stroke-width="1"/>
+      <text x="270" y="180" class="tax-title" text-anchor="middle" font-size="10">Multi-Instance</text>
+      <text x="270" y="192" class="tax-title" text-anchor="middle" font-size="10">Learning</text>
+      <text x="270" y="205" class="tax-sub" text-anchor="middle">coarse labels</text>
+      <line x1="270" y1="136" x2="270" y2="160" stroke="var(--border)" stroke-width="1"/>
+
+      <!-- Inaccurate Supervision -->
+      <rect x="370" y="100" width="160" height="36" rx="6" fill="var(--surface)" stroke="var(--border)" stroke-width="1.5"/>
+      <text x="450" y="123" class="tax-title" text-anchor="middle">Inaccurate</text>
+
+      <rect x="380" y="160" width="140" height="50" rx="5" fill="var(--code-bg)" stroke="var(--border)" stroke-width="1"/>
+      <text x="450" y="180" class="tax-title" text-anchor="middle" font-size="10">Noisy Label</text>
+      <text x="450" y="192" class="tax-title" text-anchor="middle" font-size="10">Learning</text>
+      <text x="450" y="205" class="tax-sub" text-anchor="middle">wrong labels</text>
+      <line x1="450" y1="136" x2="450" y2="160" stroke="var(--border)" stroke-width="1"/>
+
+      <!-- Highlight box for Part 1 -->
+      <rect x="2" y="95" width="196" height="125" rx="8" fill="none" stroke="var(--green)" stroke-width="1.5" stroke-dasharray="5,3"/>
+      <text x="100" y="240" class="tax-label tax-green" text-anchor="middle" font-size="11">← covered in this article</text>
+    </svg>
+
+    <p>
+      Before delving any deeper, let's formally define a supervised learning task as learning a $f: X \to Y$, where from a training data set<br>
+      $D = \{(x_1, y_1), \dots, (x_m, y_m)\}$,<br>
+      where $X$ is the feature space,<br>
+      $Y = \{Y, N\}$, $x_i \in X$, and $y_i \in Y$.
+    </p>
+
+    <p>
+      We assume that $(x_i, y_i)$ are generated according to an <em>identical and independent distribution $\mathcal{D}$.</em><br>
+      So what is identical and independent distribution?<br>
+      "Indentical distributed" means the variables follow the same probability distribution.<br>
+      "Independently distributed" implies that the generation of any pair $(x_i, y_i)$ does not influence the generation of another pair $(x_j, y_j)$. In essence, all pairs are assumed to be statistical replicas of each other, and the generation of one pair has no effect on the generation of another.
+    </p>
+
+    <h2>Incomplete Supervision</h2>
+
+    <p>
+      "Incomplete Supervision" is a scenario where only a part of the training data has labels, while mostly unlabeled data is available. The two main techniques for handling incomplete supervision are active learning and semi-supervised learning. Formally the task in incomplete supervision is defined as learning $f: X \to Y$, where from a training data set<br>
+      $D = \{(x_1, y_1), \dots, (x_l, y_l), x_{l+1}, \dots, x_m\}$,<br>
+      where $l$ is the number of labeled training examples (we have $y_i$ for them), and $u = m - l$ is the number of unlabeled instances.
+    </p>
+
+    <p>
+      <strong>Active Learning</strong>: Active learning involves querying an "oracle" (like a human expert) for labels. The goal is to minimize the number of queries to the oracle to train an effective model. So, the idea is to query the label that can provide the most benefit from more information, deliberately querying for the data point that is most uncertain about itself.
+    </p>
+
+    <p>
+      Meanwhile, <strong>semi-supervised learning</strong> uses unlabeled data to improve learning, trying to make use of this data automatically without needing human help.
+    </p>
+
+    <p>
+      Note next information is not directly useful for development so you can skip to next section. But still I believe in having complete idea. Unlabeled data must have some connection to the underlying data distribution in order to be used in any way. The following assumptions are used by semi-supervised learning algorithms:<br>
+      <strong>Continuity/ smoothness assumption:</strong> Points that are close to each other are more likely to share a label.<br>
+      <strong>Cluster assumption:</strong> The data tend to form discrete clusters, and points in the same cluster are more likely to share a label.<br>
+      <strong>Manifold assumption:</strong> The data lie approximately on a manifold of much lower dimension than the input space. In this case, learning the manifold using both the labeled and unlabeled data can avoid the curse of dimensionality. Then, learning can proceed using distances and densities defined on the manifold.
+    </p>
+
+    <hr>
+
+    <p>
+      Now, let's talk a little more about active learning. Given a small set of labeled data and abundant unlabeled data, active learning attempts to select the most valuable unlabeled instance to query.
+    </p>
+
+    <h3>Selection criteria</h3>
+
+    <p>
+      There are two widely used selection criteria:<br>
+      1. <strong>Informativeness</strong>: Given a model, it measures how well getting the information about unlabeled data will reduce its uncertainty. The idea is to select instances that provide the most new information to improve the model's predictions on unseen data. Two approaches based on informativeness are mentioned:<br>
+      a. <strong>Uncertainty sampling</strong> — This trains a single learner and queries the unlabeled instances on which the learner has the least confidence.<br>
+      b. <strong>Query-by-committee</strong> — This generates multiple learners and queries the unlabeled instances on which the learners disagree the most.
+    </p>
+
+    <p>
+      2. <strong>Representativeness</strong>: It measures how well an instance represents the overall distribution or structure of the input patterns in the unlabeled data. The goal is to select representative instances from different clusters or regions of the input space. We can measure representativeness by using clustering method, density-based methods or diversity based method
+    </p>
+
+    <!-- SVG: Selection Criteria Comparison -->
+    <svg viewBox="0 0 540 330" xmlns="http://www.w3.org/2000/svg" style="width:100%; max-width:540px; margin:2rem auto; display:block;">
+      <style>
+        .sc-label { font-family: 'Geist Mono', monospace; font-size: 10px; fill: var(--muted); }
+        .sc-title { font-family: 'Geist Mono', monospace; font-size: 12px; fill: var(--text); font-weight: 600; }
+        .sc-code  { font-family: 'Geist Mono', monospace; font-size: 11px; fill: var(--text); }
+        .sc-green { fill: var(--green); }
+      </style>
+
+      <!-- Left: Informativeness -->
+      <text x="130" y="20" class="sc-title" text-anchor="middle">Informativeness</text>
+      <text x="130" y="35" class="sc-label" text-anchor="middle">"what reduces model uncertainty?"</text>
+
+      <!-- Decision boundary scene -->
+      <rect x="10" y="45" width="240" height="150" rx="8" fill="var(--code-bg)" stroke="var(--border)" stroke-width="1"/>
+
+      <!-- Decision boundary line -->
+      <line x1="30" y1="170" x2="230" y2="70" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="6,3"/>
+      <text x="200" y="65" class="sc-label">boundary</text>
+
+      <!-- Class A points (above boundary) -->
+      <circle cx="60" cy="80" r="5" fill="var(--green)" opacity="0.6"/>
+      <circle cx="90" cy="70" r="5" fill="var(--green)" opacity="0.6"/>
+      <circle cx="120" cy="65" r="5" fill="var(--green)" opacity="0.6"/>
+      <circle cx="75" cy="95" r="5" fill="var(--green)" opacity="0.6"/>
+      <circle cx="50" cy="100" r="5" fill="var(--green)" opacity="0.6"/>
+
+      <!-- Class B points (below boundary) -->
+      <circle cx="140" cy="155" r="5" fill="var(--muted)" opacity="0.6"/>
+      <circle cx="170" cy="165" r="5" fill="var(--muted)" opacity="0.6"/>
+      <circle cx="200" cy="150" r="5" fill="var(--muted)" opacity="0.6"/>
+      <circle cx="190" cy="170" r="5" fill="var(--muted)" opacity="0.6"/>
+      <circle cx="160" cy="140" r="5" fill="var(--muted)" opacity="0.6"/>
+
+      <!-- Uncertain points near boundary - highlighted -->
+      <circle cx="120" cy="120" r="6" fill="none" stroke="var(--green)" stroke-width="2"/>
+      <circle cx="120" cy="120" r="3" fill="var(--green)"/>
+      <circle cx="150" cy="110" r="6" fill="none" stroke="var(--green)" stroke-width="2"/>
+      <circle cx="150" cy="110" r="3" fill="var(--green)"/>
+      <circle cx="100" cy="130" r="6" fill="none" stroke="var(--green)" stroke-width="2"/>
+      <circle cx="100" cy="130" r="3" fill="var(--green)"/>
+
+      <text x="175" y="118" class="sc-label sc-green" font-size="9">← most uncertain</text>
+      <text x="175" y="128" class="sc-label sc-green" font-size="9">   (near boundary)</text>
+
+      <!-- Sub-methods -->
+      <rect x="15" y="210" width="110" height="44" rx="5" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="70" y="228" class="sc-code" text-anchor="middle">Uncertainty</text>
+      <text x="70" y="242" class="sc-code" text-anchor="middle">Sampling</text>
+      <text x="70" y="258" class="sc-label" text-anchor="middle">1 learner, least</text>
+      <text x="70" y="270" class="sc-label" text-anchor="middle">confident sample</text>
+
+      <rect x="135" y="210" width="110" height="44" rx="5" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="190" y="228" class="sc-code" text-anchor="middle">Query by</text>
+      <text x="190" y="242" class="sc-code" text-anchor="middle">Committee</text>
+      <text x="190" y="258" class="sc-label" text-anchor="middle">N learners, most</text>
+      <text x="190" y="270" class="sc-label" text-anchor="middle">disagreement</text>
+
+      <!-- Divider -->
+      <line x1="270" y1="15" x2="270" y2="290" stroke="var(--border)" stroke-width="1" stroke-dasharray="4,4"/>
+
+      <!-- Right: Representativeness -->
+      <text x="405" y="20" class="sc-title" text-anchor="middle">Representativeness</text>
+      <text x="405" y="35" class="sc-label" text-anchor="middle">"what represents the data well?"</text>
+
+      <!-- Cluster scene -->
+      <rect x="290" y="45" width="240" height="150" rx="8" fill="var(--code-bg)" stroke="var(--border)" stroke-width="1"/>
+
+      <!-- Cluster 1 (top-left) -->
+      <circle cx="330" cy="80" r="4" fill="var(--muted)" opacity="0.5"/>
+      <circle cx="340" cy="90" r="4" fill="var(--muted)" opacity="0.5"/>
+      <circle cx="320" cy="95" r="4" fill="var(--muted)" opacity="0.5"/>
+      <circle cx="345" cy="75" r="4" fill="var(--muted)" opacity="0.5"/>
+      <circle cx="335" cy="85" r="6" fill="none" stroke="var(--green)" stroke-width="2"/>
+      <circle cx="335" cy="85" r="3" fill="var(--green)"/>
+      <!-- Cluster circle -->
+      <ellipse cx="335" cy="85" rx="30" ry="22" fill="none" stroke="var(--border)" stroke-width="1" stroke-dasharray="3,3"/>
+
+      <!-- Cluster 2 (right) -->
+      <circle cx="460" cy="100" r="4" fill="var(--muted)" opacity="0.5"/>
+      <circle cx="475" cy="110" r="4" fill="var(--muted)" opacity="0.5"/>
+      <circle cx="450" cy="115" r="4" fill="var(--muted)" opacity="0.5"/>
+      <circle cx="465" cy="120" r="4" fill="var(--muted)" opacity="0.5"/>
+      <circle cx="463" cy="108" r="6" fill="none" stroke="var(--green)" stroke-width="2"/>
+      <circle cx="463" cy="108" r="3" fill="var(--green)"/>
+      <ellipse cx="463" cy="110" rx="28" ry="22" fill="none" stroke="var(--border)" stroke-width="1" stroke-dasharray="3,3"/>
+
+      <!-- Cluster 3 (bottom) -->
+      <circle cx="385" cy="155" r="4" fill="var(--muted)" opacity="0.5"/>
+      <circle cx="400" cy="160" r="4" fill="var(--muted)" opacity="0.5"/>
+      <circle cx="370" cy="165" r="4" fill="var(--muted)" opacity="0.5"/>
+      <circle cx="395" cy="170" r="4" fill="var(--muted)" opacity="0.5"/>
+      <circle cx="388" cy="162" r="6" fill="none" stroke="var(--green)" stroke-width="2"/>
+      <circle cx="388" cy="162" r="3" fill="var(--green)"/>
+      <ellipse cx="385" cy="162" rx="30" ry="20" fill="none" stroke="var(--border)" stroke-width="1" stroke-dasharray="3,3"/>
+
+      <text x="395" y="70" class="sc-label sc-green" font-size="9">cluster centers</text>
+      <text x="395" y="80" class="sc-label sc-green" font-size="9">selected ↓</text>
+
+      <!-- Sub-methods -->
+      <rect x="295" y="210" width="100" height="44" rx="5" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="345" y="228" class="sc-code" text-anchor="middle">Clustering</text>
+      <text x="345" y="248" class="sc-label" text-anchor="middle">pick centroids</text>
+
+      <rect x="405" y="210" width="100" height="44" rx="5" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="455" y="228" class="sc-code" text-anchor="middle">Density</text>
+      <text x="455" y="248" class="sc-label" text-anchor="middle">dense regions</text>
+
+      <!-- Bottom: key insight -->
+      <rect x="30" y="290" width="480" height="35" rx="6" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="270" y="312" class="sc-code" text-anchor="middle">Best results often combine both: informative + representative</text>
+    </svg>
+
+    <p>
+      Other query strategies include Random sampling, Variance reduction, etc.
+    </p>
+
+    <p><em>Workflow of active learning (Image taken from modAL)</em></p>
+
+    <p>
+      An active learning step as demonstrated in the flowchart, it can be explained like this:
+    </p>
+
+    <ol>
+      <li>Get an initial model: Train it on available labeled data with the initial model.</li>
+      <li>Train the model on the available labeled data.</li>
+      <li>Now, predict the unlabeled data with the trained model and get its score, which can be model confidence, entropy, or variance.</li>
+      <li>Depending upon your query algorithm and what you are measuring, uncertainty is getting the unlabeled data.</li>
+      <li>Now, ask the oracle (any organization or human annotator) to provide ground truth for your chosen label.</li>
+      <li>Add this new information (newly annotated data) to the training set, retrain the model, and repeat this until you are exhausted; I mean, the performance threshold has been reached, or the budget is over.</li>
+    </ol>
+
+    <!-- SVG: Active Learning Loop -->
+    <svg viewBox="0 0 480 380" xmlns="http://www.w3.org/2000/svg" style="width:100%; max-width:480px; margin:2rem auto; display:block;">
+      <style>
+        .al-label { font-family: 'Geist Mono', monospace; font-size: 10px; fill: var(--muted); }
+        .al-title { font-family: 'Geist Mono', monospace; font-size: 11px; fill: var(--text); font-weight: 600; }
+        .al-green { font-family: 'Geist Mono', monospace; font-size: 10px; fill: var(--green); }
+      </style>
+
+      <text x="240" y="20" class="al-title" text-anchor="middle" font-size="13">Active Learning Cycle</text>
+
+      <!-- Step 1: Labeled Data -->
+      <rect x="165" y="35" width="150" height="40" rx="6" fill="var(--surface)" stroke="var(--green)" stroke-width="1.5"/>
+      <text x="240" y="52" class="al-title" text-anchor="middle">Labeled Data</text>
+      <text x="240" y="66" class="al-label" text-anchor="middle">(small initial set)</text>
+
+      <!-- Arrow down -->
+      <line x1="240" y1="75" x2="240" y2="100" stroke="var(--muted)" stroke-width="1.5"/>
+      <polygon points="237,98 243,98 240,105" fill="var(--muted)"/>
+
+      <!-- Step 2: Train Model -->
+      <rect x="165" y="105" width="150" height="36" rx="6" fill="var(--surface)" stroke="var(--border)" stroke-width="1.5"/>
+      <text x="240" y="128" class="al-title" text-anchor="middle">Train Model</text>
+
+      <!-- Arrow down -->
+      <line x1="240" y1="141" x2="240" y2="166" stroke="var(--muted)" stroke-width="1.5"/>
+      <polygon points="237,164 243,164 240,171" fill="var(--muted)"/>
+
+      <!-- Step 3: Predict Unlabeled -->
+      <rect x="145" y="171" width="190" height="36" rx="6" fill="var(--surface)" stroke="var(--border)" stroke-width="1.5"/>
+      <text x="240" y="194" class="al-title" text-anchor="middle">Predict Unlabeled Data</text>
+
+      <!-- Arrow down -->
+      <line x1="240" y1="207" x2="240" y2="232" stroke="var(--muted)" stroke-width="1.5"/>
+      <polygon points="237,230 243,230 240,237" fill="var(--muted)"/>
+
+      <!-- Step 4: Select Most Uncertain -->
+      <rect x="130" y="237" width="220" height="36" rx="6" fill="var(--code-bg)" stroke="var(--green)" stroke-width="1.5"/>
+      <text x="240" y="260" class="al-title" text-anchor="middle">Select Most Uncertain</text>
+
+      <!-- Arrow down -->
+      <line x1="240" y1="273" x2="240" y2="298" stroke="var(--muted)" stroke-width="1.5"/>
+      <polygon points="237,296 243,296 240,303" fill="var(--muted)"/>
+
+      <!-- Step 5: Query Oracle -->
+      <rect x="155" y="303" width="170" height="40" rx="6" fill="var(--surface)" stroke="var(--border)" stroke-width="1.5"/>
+      <text x="240" y="320" class="al-title" text-anchor="middle">Query Oracle</text>
+      <text x="240" y="334" class="al-label" text-anchor="middle">(human annotator)</text>
+
+      <!-- Loop arrow: from Query Oracle back up to Labeled Data -->
+      <!-- Right side going up -->
+      <line x1="325" y1="323" x2="420" y2="323" stroke="var(--green)" stroke-width="1.5"/>
+      <line x1="420" y1="323" x2="420" y2="55" stroke="var(--green)" stroke-width="1.5"/>
+      <line x1="420" y1="55" x2="318" y2="55" stroke="var(--green)" stroke-width="1.5"/>
+      <polygon points="320,52 320,58 314,55" fill="var(--green)"/>
+
+      <!-- Loop label -->
+      <text x="435" y="190" class="al-green" text-anchor="start" transform="rotate(90, 435, 190)" font-size="10">add to training set & repeat</text>
+
+      <!-- Left side: strategy labels -->
+      <text x="115" y="258" class="al-green" text-anchor="end">entropy /</text>
+      <text x="115" y="270" class="al-green" text-anchor="end">committee vote</text>
+
+      <!-- Stop condition -->
+      <rect x="30" y="310" width="110" height="36" rx="5" fill="var(--code-bg)" stroke="var(--border)" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="85" y="326" class="al-label" text-anchor="middle">stop when budget</text>
+      <text x="85" y="338" class="al-label" text-anchor="middle">exhausted</text>
+      <line x1="140" y1="328" x2="155" y2="323" stroke="var(--border)" stroke-width="1" stroke-dasharray="3,3"/>
+    </svg>
+
+    <p>Let's try to code something ………………..</p>
+
+    <p>
+      We will now try to train a simple logistic regression model with three approaches: one without active learning, active learning using entropy sampling, and another using a query by committee.
+    </p>
+
+    <p>Let's start with importing relevant libraries</p>
+
+    <pre><code class="language-python">import numpy as np
+import pandas as pd
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score
+from sklearn.model_selection import train_test_split
+from tqdm import tqdm</code></pre>
+
+    <p>Now, let's define a split function</p>
+
+    <p>
+      The provided <code>split</code> function takes a dataset (assumed to have features and labels), splits it into training and testing subsets, and creates an unlabeled set. First, it separates the features (<code>x</code>) and labels (<code>y</code>). Then, <code>train_test_split</code>, it allocates a portion of the data for training (<code>x_train</code>, <code>y_train</code>) while preserving class distributions. The remaining data is split into a test set (<code>x_test</code>, <code>y_test</code>) and an unlabeled set (<code>x_unlabel</code>, <code>y_unlabel</code>).
+    </p>
+
+    <pre><code class="language-python">def split(dataset, train_size, test_size):
+    x = dataset[:, :-1]
+    y = dataset[:, -1]
+    x_train, x_temp, y_train, y_temp = train_test_split(x, y, train_size=train_size, stratify=y)
+    test_size_adjusted = test_size / (1 - train_size)
+    x_test, x_unlabel, y_test, y_unlabel = train_test_split(x_temp, y_temp, test_size=test_size_adjusted, stratify=y_temp)
+    return x_train, y_train, x_test, y_test, x_unlabel, y_unlabel</code></pre>
+
+    <p>Defining data and preprocessing:</p>
+
+    <pre><code class="language-python">dataset =  pd.read_csv(
+        "https://archive.ics.uci.edu/ml/machine-learning-databases/spambase/spambase.data").values[:, ]
+
+# Imputing missing data
+imputer = SimpleImputer(missing_values=0, strategy="mean")
+imputer = imputer.fit(dataset[:, :-1])
+dataset[:, :-1] = imputer.transform(dataset[:, :-1])
+
+# Feature scaling
+sc = StandardScaler()
+dataset[:, :-1] = sc.fit_transform(dataset[:, :-1])
+
+# Arrays to store accuracy of different models
+ac1, ac2, ac3 = [], [], []</code></pre>
+
+    <p>
+      Now, the first train model uses entropy sampling, where the entropy formula is used on each sample, and the sample with the highest entropy is considered to be the least certain.
+    </p>
+
+    <pre><code class="language-python"># train model by active learning using entropy sampling
+print("Training and evaluating active learning model using entropy sampling")
+for _ in tqdm(range(200)):
+    x_train, y_train, x_test, y_test, unlabel, label = split(dataset, 0.05, 0.25)
+    for _ in range(10):
+        classifier1 = LogisticRegression()
+        classifier1.fit(x_train, y_train)
+        y_probab = classifier1.predict_proba(unlabel)
+
+        # Avoid log(0) by replacing 0 with a small value
+        epsilon = 1e-10
+        y_probab = np.clip(y_probab, epsilon, 1 - epsilon)
+        entropies = -np.sum(y_probab * np.log(y_probab), axis=1)
+        highest_entropy_idx = np.argmax(entropies)
+
+        x_train = np.append(unlabel[highest_entropy_idx:highest_entropy_idx+1, :], x_train, axis=0)
+        y_train = np.append(label[highest_entropy_idx:highest_entropy_idx+1], y_train)
+        unlabel = np.delete(unlabel, highest_entropy_idx, axis=0)
+        label = np.delete(label, highest_entropy_idx)
+    classifier2 = LogisticRegression()
+    classifier2.fit(x_train, y_train)
+    ac1.append(classifier2.score(x_test, y_test))</code></pre>
+
+    <p>Good, now let's move to the simple model training without active learning involved:</p>
+
+    <pre><code class="language-python"># train without active learning
+print("Training and evaluating model without active learning")
+for _ in tqdm(range(200)):
+    x_train, y_train, x_test, y_test, unlabel, label = split(dataset, 0.05, 0.25)
+    train_size = x_train.shape[0] / dataset.shape[0]
+    x_train, y_train, x_test, y_test, unlabel, label = split(dataset, train_size, 0.25)
+
+    # Train model without active learning
+    classifier3 = LogisticRegression()
+    classifier3.fit(x_train, y_train)
+    ac2.append(classifier3.score(x_test, y_test))</code></pre>
+
+    <p>
+      Now for the last one: query by committee where a variety of models are trained on the current labeled data, and vote on the output for unlabeled data; label those points for which the "committee" disagrees the most. So, we will first make a function so that we can get the data points for which learners disagree the most.
+    </p>
+
+    <pre><code class="language-python"># Function to calculate disagreement among committee members
+def calculate_disagreement(probas):
+    # Convert probabilities to predicted class labels
+    predictions = [np.argmax(proba, axis=1) for proba in probas]
+    # Transpose to get predictions for each sample across all committee members
+    predictions = np.array(predictions).T
+    # Calculate the disagreement (variance) for each sample
+    disagreement = np.var(predictions, axis=1)
+
+# Example usage:
+probas1 = ...  # Predictions from learner 1
+probas2 = ...  # Predictions from learner 2
+probas3 = ...  # Predictions from learner 3
+disagreement_scores = calculate_disagreement([probas1, probas2, probas3])</code></pre>
+
+    <p>
+      In this function, <code>probas</code> is a list of predicted probabilities from different learners. The function calculates the variance (disagreement) for each sample based on the class labels predicted by the learners.
+    </p>
+
+    <pre><code class="language-python"># train with query by committee
+print("Training and evaluating active learning model using Query by Committee")
+for _ in tqdm(range(200)):
+    x_train, y_train, x_test, y_test, unlabel, label = split(dataset, 0.05, 0.25)
+
+    # Train model by active learning using Query by Committee
+    for _ in range(10):
+        # Train multiple models (committee)
+        classifier1 = LogisticRegression()
+        classifier2 = RandomForestClassifier()
+        classifier3 = GradientBoostingClassifier()
+
+        classifier1.fit(x_train, y_train)
+        classifier2.fit(x_train, y_train)
+        classifier3.fit(x_train, y_train)
+
+        # Get predictions from each committee member
+        probas1 = classifier1.predict_proba(unlabel)
+        probas2 = classifier2.predict_proba(unlabel)
+        probas3 = classifier3.predict_proba(unlabel)
+
+        # Calculate disagreement
+        disagreement = calculate_disagreement([probas1, probas2, probas3])
+        most_disagree_idx = np.argmax(disagreement)
+
+        # Add the most disagreeing sample to the training set
+        x_train = np.append(unlabel[most_disagree_idx:most_disagree_idx+1, :], x_train, axis=0)
+        y_train = np.append(label[most_disagree_idx:most_disagree_idx+1], y_train)
+        unlabel = np.delete(unlabel, most_disagree_idx, axis=0)
+        label = np.delete(label, most_disagree_idx)
+
+    # Train the final classifier on the expanded training set
+    final_classifier = LogisticRegression()
+    final_classifier.fit(x_train, y_train)
+    ac3.append(final_classifier.score(x_test, y_test))</code></pre>
+
+    <p>
+      Note that this code was mostly inspired by this <a href="https://www.geeksforgeeks.org/ml-active-learning/" class="text-link">link</a>; I have used similar logic to build for other query strategies.
+    </p>
+
+    <p>Now for the result time:</p>
+
+    <pre><code># Accuracy with active model (Entropy Sampling): 72.74937888198758
+# Accuracy without active learning: 72.48664596273292
+# Accuracy with active model (Query by Committee): 72.56226708074533</code></pre>
+
+    <p>
+      Results are pretty much close, and without any active learning our model has the lowest accuracy. I was also expecting little better performance but this is what I got after doing experiment for some times, I would be glad to know if there is something more can be done to improve this only.
+    </p>
+
+    <p>
+      With this bit of implementation, let's (for the time being) close the chapter of active learning, but there are still many more things to explore only in this domain.
+    </p>
+
+    <p>
+      There is a framework for python3 called <a href="https://modal-python.readthedocs.io/en/latest/content/overview/modAL-in-a-nutshell.html" class="text-link">modAL</a>; you can view its docs and learn a lot more about it.
+    </p>
+
+    <p>
+      Next we will see about Multiple Instance Learning (that comes under Inexact supervision) in the upcoming articles, which will be later in this WSL sequel.
+    </p>
+
+    <p>
+      <strong>Further reading and references:</strong><br>
+      1. <a href="https://modal-python.readthedocs.io/en/latest/content/overview/modAL-in-a-nutshell.html" class="text-link">modAL</a><br>
+      2. <a href="https://en.wikipedia.org/wiki/Active_learning_%28machine_learning%29" class="text-link">Wikipedia</a><br>
+      3. <a href="https://www.geeksforgeeks.org/ml-active-learning/" class="text-link">ML-Active Learning</a><br>
+      4. <a href="https://academic.oup.com/nsr/article/5/1/44/4093912" class="text-link">A brief introduction to weakly supervised learning</a>
+    </p>
+
+    <p>
+      I hope you learned something new and beneficial through this writing.<br>
+      Keep "MLing"
+    </p>
+
+  </article>
+
+  <div class="post-nav">
+    <a href="/">← all posts</a>
+    <a href="python-decorators.html">Python Decorators →</a>
+  </div>
+
+  <footer>
+    <span style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">© 2026 Shubham Mishra</span>
+    <div style="display:flex; gap:1.5rem;">
+      <a href="https://github.com/ShubhamMishra1611" style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">github</a>
+      <a href="https://twitter.com/" style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">twitter</a>
+    </div>
+  </footer>
+
+  <script>hljs.highlightAll();</script>
+
+</body>
+</html>
