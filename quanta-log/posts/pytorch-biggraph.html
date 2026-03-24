@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PyTorch BigGraph - quanta-log</title>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="../assets/style.css" />
+
+  <!-- KaTeX v0.16.9 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+    onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}]});"></script>
+
+  <!-- Theme (apply before paint) -->
+  <script src="../assets/theme.js"></script>
+</head>
+<body class="post-page">
+
+  <nav>
+    <a href="/" class="logo">shubham</a>
+    <ul class="nav-right">
+      <li><a href="/posts">posts</a></li>
+      <li><a href="/#topics">topics</a></li>
+      <li><a href="/about.html">about</a></li>
+      <li>
+        <button class="theme-toggle" onclick="toggleTheme()">
+          <svg class="theme-icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+          <svg class="theme-icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+      </li>
+    </ul>
+  </nav>
+
+  <div class="post-header">
+    <div style="display:flex; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap;">
+      <span class="tag">graph-ml</span>
+      <span class="tag">embeddings</span>
+      <span class="tag">paper</span>
+    </div>
+    <h1>PyTorch BigGraph - Large-Scale Graph Embeddings</h1>
+    <div class="post-meta">
+      <span>Apr 10 2024</span>
+      <span>·</span>
+      <span>9 min read</span>
+      <span>·</span>
+      <span>Shubham</span>
+    </div>
+  </div>
+
+  <article>
+
+    <p>You know your college hostel, right? You know who borrows your charger, who copies your assignment at 2 AM, who steals your Maggi when you're not looking, and who shares their WiFi password with you. That's a graph. You are a node, everyone else is a node, and the relationships - <code>borrows_charger_from</code>, <code>copies_assignment_from</code>, <code>steals_maggi_from</code> - those are edges. Easy enough.</p>
+
+    <p>Now imagine this: instead of your hostel with 200 people, you have <strong>Facebook's entire social graph. 2 billion nodes. Hundreds of billions of edges.</strong> And you want to learn a compact representation (an "embedding") for every single node in this graph, such that nodes with similar connections end up close together in vector space.</p>
+
+    <p>Your laptop just cried. Your GPU just filed a resignation letter.</p>
+
+    <!-- Visualization 1: Hostel Graph -->
+    <svg viewBox="0 0 680 340" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:100%;margin:2.5rem 0;" font-family="'Geist Mono',monospace">
+      <text x="340" y="20" text-anchor="middle" fill="var(--muted)" font-size="11" letter-spacing="0.08em">THE HOSTEL GRAPH</text>
+      <!-- Nodes -->
+      <circle cx="340" cy="100" r="28" fill="var(--surface)" stroke="var(--green)" stroke-width="2"/>
+      <text x="340" y="105" text-anchor="middle" fill="var(--green)" font-size="11" font-weight="bold">Amit</text>
+      <circle cx="160" cy="180" r="28" fill="var(--surface)" stroke="var(--border)" stroke-width="1.5"/>
+      <text x="160" y="185" text-anchor="middle" fill="var(--text)" font-size="11">Rahul</text>
+      <circle cx="520" cy="180" r="28" fill="var(--surface)" stroke="var(--border)" stroke-width="1.5"/>
+      <text x="520" y="185" text-anchor="middle" fill="var(--text)" font-size="11">Priya</text>
+      <circle cx="220" cy="290" r="28" fill="var(--surface)" stroke="var(--border)" stroke-width="1.5"/>
+      <text x="220" y="295" text-anchor="middle" fill="var(--text)" font-size="11">Deepak</text>
+      <circle cx="460" cy="290" r="28" fill="var(--surface)" stroke="var(--border)" stroke-width="1.5"/>
+      <text x="460" y="295" text-anchor="middle" fill="var(--text)" font-size="11">Sneha</text>
+      <!-- Edge: Amit -> Rahul (borrows_charger_from) -->
+      <defs>
+        <marker id="ah" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="var(--green)"/></marker>
+        <marker id="ah2" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="var(--muted)"/></marker>
+      </defs>
+      <line x1="315" y1="118" x2="185" y2="165" stroke="var(--green)" stroke-width="1.5" marker-end="url(#ah)"/>
+      <text x="230" y="132" fill="var(--green)" font-size="9" transform="rotate(-18 230 132)">borrows_charger</text>
+      <!-- Edge: Deepak -> Amit (steals_maggi_from) -->
+      <line x1="235" y1="265" x2="325" y2="125" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="6 3" marker-end="url(#ah2)"/>
+      <text x="255" y="200" fill="var(--muted)" font-size="9" transform="rotate(-65 255 200)">steals_maggi</text>
+      <!-- Edge: Amit <-> Priya (roommates_with) - bidirectional -->
+      <line x1="365" y1="118" x2="495" y2="165" stroke="var(--text)" stroke-width="1.5"/>
+      <text x="448" y="132" fill="var(--text)" font-size="9" transform="rotate(18 448 132)">roommates</text>
+      <circle cx="430" cy="145" r="3" fill="var(--text)"/>
+      <circle cx="432" cy="148" r="3" fill="var(--text)"/>
+      <!-- Edge: Rahul -> Sneha (copies_assignment_from) -->
+      <line x1="183" y1="200" x2="438" y2="280" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ah2)"/>
+      <text x="320" y="250" fill="var(--muted)" font-size="9" transform="rotate(17 320 250)">copies_assignment</text>
+      <!-- Edge: Deepak -> Priya (shares_wifi) -->
+      <line x1="245" y1="280" x2="495" y2="195" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ah2)"/>
+      <text x="400" y="228" fill="var(--muted)" font-size="9" transform="rotate(-22 400 228)">shares_wifi</text>
+      <!-- Edge: Deepak -> Sneha (steals_maggi_from) -->
+      <line x1="248" y1="290" x2="432" y2="290" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="6 3" marker-end="url(#ah2)"/>
+      <text x="340" y="308" text-anchor="middle" fill="var(--muted)" font-size="9">steals_maggi</text>
+      <!-- Legend -->
+      <rect x="15" y="36" width="130" height="60" rx="6" fill="var(--code-bg)" stroke="var(--border)" stroke-width="1"/>
+      <circle cx="30" cy="52" r="4" fill="var(--green)"/>
+      <text x="40" y="56" fill="var(--text)" font-size="9">node (student)</text>
+      <line x1="25" y1="70" x2="45" y2="70" stroke="var(--green)" stroke-width="1.5" marker-end="url(#ah)"/>
+      <text x="50" y="74" fill="var(--text)" font-size="9">directed edge</text>
+      <line x1="25" y1="86" x2="45" y2="86" stroke="var(--text)" stroke-width="1.5"/>
+      <text x="50" y="90" fill="var(--text)" font-size="9">symmetric edge</text>
+    </svg>
+
+    <h2>The Problem: Graphs That Don't Fit</h2>
+
+    <p>So here's the deal with graph embeddings. The idea is simple - assign every node a vector (say, 200 dimensions), such that the geometric relationships between these vectors capture the structural relationships in the graph. If Amit borrows chargers from Rahul, their embeddings should reflect that.</p>
+
+    <p>Methods like <strong>node2vec</strong> and <strong>DeepWalk</strong> do this beautifully... for small graphs. A few million nodes? Sure. But when you hit billions of nodes, you run into a brutal wall:</p>
+
+    <ul>
+      <li><strong>Memory</strong>: 2 billion nodes × 200 dimensions × 4 bytes = <strong>1.6 TB</strong> just for embeddings. Your RAM is what, 16 GB? 32 if you're fancy?</li>
+      <li><strong>Compute</strong>: Every training step needs to access random parts of this massive embedding table. Random access on disk is painfully slow.</li>
+      <li><strong>Distribution</strong>: Even if you had the memory, training on a single machine would take forever.</li>
+    </ul>
+
+    <p>This is where <strong>PyTorch BigGraph (PBG)</strong> enters the chat.</p>
+
+    <h2>PyTorch BigGraph: Facebook's Answer</h2>
+
+    <p>PBG was built by Facebook AI Research (FAIR) and published at AAAI 2019. The core insight is deceptively simple:</p>
+
+    <blockquote>Don't try to load everything at once. Partition the graph, process it in chunks, and be smart about what you keep in memory.</blockquote>
+
+    <p>Let me break this down.</p>
+
+    <h2>Partitioning: Think Hostel Wings</h2>
+
+    <p>Remember our hostel? Now imagine you're the warden, and you need to understand the entire social dynamics of a massive university campus - 50,000 students across 20 hostels. You can't interview everyone at once. So what do you do?</p>
+
+    <p>You split them into <strong>wings</strong>. Wing A of Hostel 1 is one bucket. Wing B is another. You process relationships within and between wings, one pair at a time.</p>
+
+    <p>This is exactly what PBG does. It partitions the entity set into $P$ partitions. Then it creates a $P \times P$ grid of <strong>buckets</strong>, where bucket $(i, j)$ contains all edges going from partition $i$ to partition $j$. During training, you only load two partitions at a time - the source partition and the destination partition - process all edges in that bucket, update the embeddings, swap partitions, and move on.</p>
+
+    <p>Here's the key bit: at any given time, you only need $\frac{2}{P}$ of all embeddings in memory. If $P = 100$, that's just 2% of the total. That 1.6 TB suddenly becomes ~32 GB. Now we're talking.</p>
+
+    <!-- Visualization 2: Partitioning Grid -->
+    <svg viewBox="0 0 680 380" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:100%;margin:2.5rem 0;" font-family="'Geist Mono',monospace">
+      <text x="340" y="20" text-anchor="middle" fill="var(--muted)" font-size="11" letter-spacing="0.08em">P × P BUCKET GRID  (P = 4)</text>
+
+      <!-- Column headers (destination partitions) -->
+      <text x="310" y="48" text-anchor="middle" fill="var(--muted)" font-size="10">destination partition →</text>
+      <text x="210" y="68" text-anchor="middle" fill="var(--text)" font-size="10">P₁</text>
+      <text x="280" y="68" text-anchor="middle" fill="var(--text)" font-size="10">P₂</text>
+      <text x="350" y="68" text-anchor="middle" fill="var(--text)" font-size="10">P₃</text>
+      <text x="420" y="68" text-anchor="middle" fill="var(--text)" font-size="10">P₄</text>
+
+      <!-- Row headers (source partitions) -->
+      <text x="150" y="110" text-anchor="end" fill="var(--text)" font-size="10">P₁</text>
+      <text x="150" y="180" text-anchor="end" fill="var(--text)" font-size="10">P₂</text>
+      <text x="150" y="250" text-anchor="end" fill="var(--text)" font-size="10">P₃</text>
+      <text x="150" y="320" text-anchor="end" fill="var(--text)" font-size="10">P₄</text>
+      <text x="120" y="215" text-anchor="middle" fill="var(--muted)" font-size="10" transform="rotate(-90 120 215)">source partition →</text>
+
+      <!-- Grid cells (4x4) -->
+      <!-- Row 1 -->
+      <rect x="175" y="80" width="65" height="55" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="207" y="112" text-anchor="middle" fill="var(--muted)" font-size="9">edges</text>
+      <rect x="245" y="80" width="65" height="55" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="277" y="112" text-anchor="middle" fill="var(--muted)" font-size="9">edges</text>
+      <rect x="315" y="80" width="65" height="55" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="347" y="112" text-anchor="middle" fill="var(--muted)" font-size="9">edges</text>
+      <rect x="385" y="80" width="65" height="55" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="417" y="112" text-anchor="middle" fill="var(--muted)" font-size="9">edges</text>
+      <!-- Row 2 -->
+      <rect x="175" y="150" width="65" height="55" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="207" y="182" text-anchor="middle" fill="var(--muted)" font-size="9">edges</text>
+      <rect x="245" y="150" width="65" height="55" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="277" y="182" text-anchor="middle" fill="var(--muted)" font-size="9">edges</text>
+      <!-- ACTIVE BUCKET (2,3) -->
+      <rect x="315" y="150" width="65" height="55" rx="4" fill="var(--green)" opacity="0.15" stroke="var(--green)" stroke-width="2.5"/>
+      <text x="347" y="178" text-anchor="middle" fill="var(--green)" font-size="10" font-weight="bold">active</text>
+      <text x="347" y="192" text-anchor="middle" fill="var(--green)" font-size="8">bucket(2,3)</text>
+      <rect x="385" y="150" width="65" height="55" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="417" y="182" text-anchor="middle" fill="var(--muted)" font-size="9">edges</text>
+      <!-- Row 3 -->
+      <rect x="175" y="220" width="65" height="55" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="207" y="252" text-anchor="middle" fill="var(--muted)" font-size="9">edges</text>
+      <rect x="245" y="220" width="65" height="55" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="277" y="252" text-anchor="middle" fill="var(--muted)" font-size="9">edges</text>
+      <rect x="315" y="220" width="65" height="55" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="347" y="252" text-anchor="middle" fill="var(--muted)" font-size="9">edges</text>
+      <rect x="385" y="220" width="65" height="55" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="417" y="252" text-anchor="middle" fill="var(--muted)" font-size="9">edges</text>
+      <!-- Row 4 -->
+      <rect x="175" y="290" width="65" height="55" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="207" y="322" text-anchor="middle" fill="var(--muted)" font-size="9">edges</text>
+      <rect x="245" y="290" width="65" height="55" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="277" y="322" text-anchor="middle" fill="var(--muted)" font-size="9">edges</text>
+      <rect x="315" y="290" width="65" height="55" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="347" y="322" text-anchor="middle" fill="var(--muted)" font-size="9">edges</text>
+      <rect x="385" y="290" width="65" height="55" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="417" y="322" text-anchor="middle" fill="var(--muted)" font-size="9">edges</text>
+
+      <!-- Highlight active row (P₂ source) -->
+      <rect x="160" y="150" width="10" height="55" rx="2" fill="var(--green)" opacity="0.4"/>
+      <!-- Highlight active col (P₃ destination) -->
+      <rect x="315" y="70" width="65" height="6" rx="2" fill="var(--green)" opacity="0.4"/>
+
+      <!-- Right-side annotation: loaded partitions -->
+      <rect x="480" y="110" width="185" height="100" rx="8" fill="var(--code-bg)" stroke="var(--border)" stroke-width="1"/>
+      <text x="490" y="132" fill="var(--green)" font-size="11" font-weight="bold">In memory now:</text>
+      <text x="490" y="152" fill="var(--text)" font-size="10">• P₂ embeddings (source)</text>
+      <text x="490" y="170" fill="var(--text)" font-size="10">• P₃ embeddings (dest)</text>
+      <text x="490" y="196" fill="var(--muted)" font-size="10">= only 2/4 = 50% loaded</text>
+
+      <!-- Arrow from active to annotation -->
+      <line x1="382" y1="175" x2="478" y2="155" stroke="var(--green)" stroke-width="1" stroke-dasharray="4 3"/>
+
+      <!-- Bottom note -->
+      <rect x="480" y="240" width="185" height="70" rx="8" fill="var(--code-bg)" stroke="var(--border)" stroke-width="1"/>
+      <text x="490" y="262" fill="var(--muted)" font-size="10">With P = 100:</text>
+      <text x="490" y="280" fill="var(--text)" font-size="10">only 2% in memory</text>
+      <text x="490" y="298" fill="var(--green)" font-size="10">1.6 TB → ~32 GB</text>
+    </svg>
+
+    <h3>Bucket Scheduling</h3>
+
+    <p>But which buckets do you process in what order? You can't just go left to right - that would mean partition 1's embeddings are loaded for way too long while partition 99 waits.</p>
+
+    <p>PBG uses a <strong>lock-based scheduling</strong> approach. In distributed mode, each machine grabs a bucket, "locks" the two partitions it needs, processes the bucket, releases the locks, and grabs the next available bucket. It's like the hostel warden assigning wings to different RAs - no two RAs investigate the same wing simultaneously.</p>
+
+    <h2>Memory-Mapped Storage: The Phone Book Trick</h2>
+
+    <p>Here's another clever bit. PBG doesn't actually "load" embeddings the way you'd expect. It uses <strong>memory-mapped files</strong> - a technique where the operating system pretends a file on disk is part of your RAM.</p>
+
+    <p>Think of it like a massive hostel register. You have a 10,000-page register with every student's details. You don't read all 10,000 pages. You put sticky tabs on the pages you need, and the OS hands them to you on demand. If RAM gets tight, the OS quietly swaps out pages you haven't touched recently.</p>
+
+    <p>The embeddings sit on disk in a binary format. When PBG needs embeddings for partition 3, it doesn't read the entire file - it just accesses the relevant memory-mapped region, and the OS handles the paging. This is what lets PBG train on graphs that are <strong>terabytes</strong> in size using machines with only gigabytes of RAM.</p>
+
+    <h2>Embedding Models: How to Represent Relationships</h2>
+
+    <p>Now for the fun part. We have the infrastructure to handle billions of nodes. But how do we actually compute embeddings? What does it mean for two node vectors to "represent" a relationship?</p>
+
+    <p>PBG supports several embedding models, each with a different geometric interpretation. Let me explain them using our hostel graph.</p>
+
+    <!-- Visualization 3: Scoring Function Comparison -->
+    <svg viewBox="0 0 680 460" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:100%;margin:2.5rem 0;" font-family="'Geist Mono',monospace">
+      <text x="340" y="20" text-anchor="middle" fill="var(--muted)" font-size="11" letter-spacing="0.08em">FOUR SCORING FUNCTIONS - GEOMETRIC INTUITION</text>
+
+      <!-- Panel 1: TransE (top-left) -->
+      <rect x="15" y="40" width="315" height="190" rx="8" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="172" y="62" text-anchor="middle" fill="var(--green)" font-size="12" font-weight="bold">TransE - "Walk in That Direction"</text>
+      <!-- vector diagram: e_s + r ≈ e_d -->
+      <circle cx="70" cy="150" r="6" fill="var(--green)"/>
+      <text x="70" y="172" text-anchor="middle" fill="var(--text)" font-size="10">e_s</text>
+      <!-- relation arrow -->
+      <line x1="76" y1="150" x2="168" y2="110" stroke="var(--green)" stroke-width="2" marker-end="url(#ah)"/>
+      <text x="130" y="118" fill="var(--green)" font-size="9" transform="rotate(-20 130 118)">+ r</text>
+      <!-- destination -->
+      <circle cx="180" cy="105" r="6" fill="var(--text)"/>
+      <text x="180" y="95" text-anchor="middle" fill="var(--text)" font-size="10">e_d</text>
+      <!-- approx symbol -->
+      <text x="175" y="120" fill="var(--muted)" font-size="11">≈</text>
+      <!-- hostel example -->
+      <rect x="210" y="80" width="110" height="55" rx="5" fill="var(--code-bg)" stroke="var(--border)" stroke-width="1"/>
+      <text x="265" y="98" text-anchor="middle" fill="var(--text)" font-size="9">Amit + "borrows"</text>
+      <text x="265" y="112" text-anchor="middle" fill="var(--text)" font-size="9">≈ Rahul</text>
+      <text x="265" y="128" text-anchor="middle" fill="var(--green)" font-size="9">translation</text>
+      <!-- weakness note -->
+      <text x="172" y="200" text-anchor="middle" fill="var(--muted)" font-size="9">symmetric relations break it</text>
+      <text x="172" y="216" text-anchor="middle" fill="var(--muted)" font-size="9">(r = 0 → roommates collapse)</text>
+
+      <!-- Panel 2: DistMult (top-right) -->
+      <rect x="350" y="40" width="315" height="190" rx="8" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="507" y="62" text-anchor="middle" fill="var(--green)" font-size="12" font-weight="bold">DistMult - "Stretch and Squeeze"</text>
+      <!-- diagonal scaling visual -->
+      <rect x="385" y="85" width="12" height="90" rx="2" fill="var(--code-bg)" stroke="var(--border)" stroke-width="1"/>
+      <rect x="385" y="85" width="12" height="30" rx="2" fill="var(--green)" opacity="0.4"/>
+      <rect x="385" y="145" width="12" height="12" rx="2" fill="var(--green)" opacity="0.15"/>
+      <text x="391" y="80" text-anchor="middle" fill="var(--text)" font-size="8">e_s</text>
+      <text x="415" y="130" fill="var(--muted)" font-size="14">⊙</text>
+      <rect x="432" y="85" width="12" height="90" rx="2" fill="var(--code-bg)" stroke="var(--border)" stroke-width="1"/>
+      <rect x="432" y="85" width="12" height="60" rx="2" fill="var(--green)" opacity="0.3"/>
+      <text x="438" y="80" text-anchor="middle" fill="var(--text)" font-size="8">r</text>
+      <text x="460" y="130" fill="var(--muted)" font-size="14">⊙</text>
+      <rect x="478" y="85" width="12" height="90" rx="2" fill="var(--code-bg)" stroke="var(--border)" stroke-width="1"/>
+      <rect x="478" y="85" width="12" height="45" rx="2" fill="var(--green)" opacity="0.35"/>
+      <text x="484" y="80" text-anchor="middle" fill="var(--text)" font-size="8">e_d</text>
+      <!-- hostel example -->
+      <rect x="520" y="85" width="130" height="55" rx="5" fill="var(--code-bg)" stroke="var(--border)" stroke-width="1"/>
+      <text x="585" y="103" text-anchor="middle" fill="var(--text)" font-size="9">r filters which</text>
+      <text x="585" y="117" text-anchor="middle" fill="var(--text)" font-size="9">dims matter</text>
+      <text x="585" y="133" text-anchor="middle" fill="var(--green)" font-size="9">diagonal bilinear</text>
+      <!-- strength/weakness -->
+      <text x="507" y="200" text-anchor="middle" fill="var(--green)" font-size="9">handles symmetric (roommates)</text>
+      <text x="507" y="216" text-anchor="middle" fill="var(--muted)" font-size="9">but ONLY symmetric</text>
+
+      <!-- Panel 3: ComplEx (bottom-left) -->
+      <rect x="15" y="250" width="315" height="190" rx="8" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="172" y="272" text-anchor="middle" fill="var(--green)" font-size="12" font-weight="bold">ComplEx - "Complex Plane"</text>
+      <!-- complex plane axes -->
+      <line x1="60" y1="390" x2="60" y2="300" stroke="var(--border)" stroke-width="1"/>
+      <line x1="60" y1="390" x2="190" y2="390" stroke="var(--border)" stroke-width="1"/>
+      <text x="195" y="394" fill="var(--muted)" font-size="8">Re</text>
+      <text x="52" y="298" fill="var(--muted)" font-size="8">Im</text>
+      <!-- e_s vector -->
+      <line x1="60" y1="390" x2="140" y2="330" stroke="var(--green)" stroke-width="2"/>
+      <circle cx="140" cy="330" r="5" fill="var(--green)"/>
+      <text x="148" y="325" fill="var(--green)" font-size="9">e_s</text>
+      <!-- conjugate e_d -->
+      <line x1="60" y1="390" x2="150" y2="370" stroke="var(--text)" stroke-width="2"/>
+      <circle cx="150" cy="370" r="5" fill="var(--text)"/>
+      <text x="160" y="375" fill="var(--text)" font-size="9">conj(e_d)</text>
+      <!-- dashed mirror -->
+      <line x1="60" y1="390" x2="150" y2="410" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3"/>
+      <text x="155" y="418" fill="var(--muted)" font-size="8">e_d</text>
+      <!-- annotation -->
+      <rect x="210" y="300" width="110" height="68" rx="5" fill="var(--code-bg)" stroke="var(--border)" stroke-width="1"/>
+      <text x="265" y="318" text-anchor="middle" fill="var(--text)" font-size="9">conjugate breaks</text>
+      <text x="265" y="332" text-anchor="middle" fill="var(--text)" font-size="9">symmetry when</text>
+      <text x="265" y="346" text-anchor="middle" fill="var(--text)" font-size="9">needed</text>
+      <text x="265" y="362" text-anchor="middle" fill="var(--green)" font-size="9">best of both</text>
+      <text x="172" y="428" text-anchor="middle" fill="var(--green)" font-size="9">symmetric + asymmetric</text>
+
+      <!-- Panel 4: RotatE (bottom-right) -->
+      <rect x="350" y="250" width="315" height="190" rx="8" fill="var(--surface)" stroke="var(--green)" stroke-width="1.5"/>
+      <text x="507" y="272" text-anchor="middle" fill="var(--green)" font-size="12" font-weight="bold">RotatE - "Spin to Win"</text>
+      <!-- rotation arc -->
+      <circle cx="470" cy="370" r="60" fill="none" stroke="var(--border)" stroke-width="1" stroke-dasharray="4 3"/>
+      <!-- e_s on the circle -->
+      <line x1="470" y1="370" x2="530" y2="350" stroke="var(--green)" stroke-width="2"/>
+      <circle cx="530" cy="350" r="5" fill="var(--green)"/>
+      <text x="542" y="348" fill="var(--green)" font-size="9">e_s</text>
+      <!-- rotation arrow arc -->
+      <path d="M525 345 A55 55 0 0 1 500 308" stroke="var(--green)" stroke-width="1.5" fill="none" marker-end="url(#ah)"/>
+      <text x="530" y="318" fill="var(--green)" font-size="9">× r</text>
+      <!-- e_d after rotation -->
+      <circle cx="498" cy="312" r="5" fill="var(--text)"/>
+      <text x="498" y="302" text-anchor="middle" fill="var(--text)" font-size="9">e_d</text>
+      <!-- angle label -->
+      <text x="510" y="340" fill="var(--muted)" font-size="9">θ</text>
+      <!-- composition example -->
+      <rect x="550" y="295" width="105" height="80" rx="5" fill="var(--code-bg)" stroke="var(--border)" stroke-width="1"/>
+      <text x="602" y="313" text-anchor="middle" fill="var(--text)" font-size="9">copies (45°)</text>
+      <text x="602" y="327" text-anchor="middle" fill="var(--text)" font-size="9">+ borrows (30°)</text>
+      <text x="602" y="341" text-anchor="middle" fill="var(--text)" font-size="9">= combined (75°)</text>
+      <text x="602" y="363" text-anchor="middle" fill="var(--green)" font-size="9" font-weight="bold">rotations</text>
+      <text x="602" y="373" text-anchor="middle" fill="var(--green)" font-size="9" font-weight="bold">compose!</text>
+      <!-- badge -->
+      <text x="507" y="428" text-anchor="middle" fill="var(--green)" font-size="9" font-weight="bold">sym + antisym + composition + inverse</text>
+    </svg>
+
+    <h3>Setup</h3>
+
+    <p>Every entity (student) gets an embedding vector $\mathbf{e} \in \mathbb{R}^k$. Every relation type (<code>borrows_charger_from</code>, <code>steals_maggi_from</code>, <code>roommates_with</code>) gets its own relation vector or operator $\mathbf{r}$. The model defines a <strong>scoring function</strong> $\text{score}(s, r, d)$ that says: "how likely is it that source $s$ has relation $r$ with destination $d$?"</p>
+
+    <h3>TransE - "Walk in That Direction"</h3>
+
+    <p>The simplest one. TransE treats a relation as a <strong>translation</strong> in embedding space:</p>
+
+    $$\text{score}(s, r, d) = -\|\mathbf{e}_s + \mathbf{r} - \mathbf{e}_d\|$$
+
+    <p>The idea: if Amit <code>borrows_charger_from</code> Rahul, then Amit's embedding plus the "borrows_charger" vector should land close to Rahul's embedding. It's literally: <strong>source + relation ≈ destination</strong>.</p>
+
+    <p>Beautiful in its simplicity. But here's the catch - TransE struggles with <strong>symmetric relations</strong>. If Amit is <code>roommates_with</code> Rahul, then Rahul is also <code>roommates_with</code> Amit. But TransE would need $\mathbf{e}_{\text{Amit}} + \mathbf{r} = \mathbf{e}_{\text{Rahul}}$ AND $\mathbf{e}_{\text{Rahul}} + \mathbf{r} = \mathbf{e}_{\text{Amit}}$, which means $\mathbf{r} = 0$ and both embeddings are identical. That's... not great.</p>
+
+    <h3>DistMult - "Stretch and Squeeze"</h3>
+
+    <p>DistMult fixes the symmetry problem by using a <strong>diagonal bilinear</strong> form:</p>
+
+    $$\text{score}(s, r, d) = \mathbf{e}_s \cdot (\mathbf{r} \odot \mathbf{e}_d)$$
+
+    <p>Where $\odot$ is element-wise multiplication. The relation vector $\mathbf{r}$ acts like a filter - it amplifies some dimensions and suppresses others. Notice that this is symmetric by nature: $\text{score}(s, r, d) = \text{score}(d, r, s)$. Perfect for <code>roommates_with</code>.</p>
+
+    <p>But wait... now it can <em>only</em> handle symmetric relations. <code>borrows_charger_from</code> is definitely not symmetric (just because I borrow from you doesn't mean you borrow from me). We need something more.</p>
+
+    <h3>ComplEx - "Into the Complex Plane"</h3>
+
+    <p>ComplEx takes things to the complex numbers. Instead of real vectors, embeddings live in $\mathbb{C}^k$:</p>
+
+    $$\text{score}(s, r, d) = \text{Re}\!\left(\mathbf{e}_s \cdot (\mathbf{r} \odot \overline{\mathbf{e}_d})\right)$$
+
+    <p>Where $\overline{\mathbf{e}_d}$ is the complex conjugate and $\text{Re}()$ takes the real part. The magic of the conjugate is that it breaks the symmetry when needed. If a relation is symmetric, the imaginary parts cancel out and it behaves like DistMult. If it's antisymmetric, the imaginary parts dominate.</p>
+
+    <p>So ComplEx handles both <code>roommates_with</code> (symmetric) AND <code>borrows_charger_from</code> (asymmetric). Nice.</p>
+
+    <h3>RotatE - "Spin to Win"</h3>
+
+    <p>RotatE is my favourite. It models relations as <strong>rotations</strong> in complex space:</p>
+
+    $$\text{score}(s, r, d) = -\|\mathbf{e}_s \circ \mathbf{r} - \mathbf{e}_d\|$$
+
+    <p>Where $\circ$ is element-wise complex multiplication and $\mathbf{r}$ has unit norm ($|r_i| = 1$ for each dimension). So each relation is a rotation.</p>
+
+    <p>Why is this cool? Because rotations compose. If <code>copies_assignment_from</code> is a 45° rotation and <code>borrows_charger_from</code> is a 30° rotation, then doing both is a 75° rotation. This means RotatE can learn <strong>compositional relations</strong>: if A copies from B and B borrows from C, there's an implicit transitive relationship between A and C. TransE can kind of do this too, but RotatE handles it more elegantly because rotations naturally compose.</p>
+
+    <p>Also, a 180° rotation is its own inverse - perfect for symmetric relations. And rotation by $\theta$ followed by rotation by $-\theta$ gives identity - perfect for inverse relations. RotatE basically handles symmetry, antisymmetry, inversion, AND composition. The Swiss Army knife of scoring functions.</p>
+
+    <h3>Quick Comparison</h3>
+
+    <table style="width:100%; border-collapse:collapse; margin:1.5rem 0; font-family:'Geist Mono',monospace; font-size:0.9rem;">
+      <thead>
+        <tr style="border-bottom:2px solid var(--border);">
+          <th style="text-align:left; padding:0.6rem 0.8rem; color:var(--text);">Model</th>
+          <th style="text-align:center; padding:0.6rem 0.8rem; color:var(--text);">Symmetric</th>
+          <th style="text-align:center; padding:0.6rem 0.8rem; color:var(--text);">Antisymmetric</th>
+          <th style="text-align:center; padding:0.6rem 0.8rem; color:var(--text);">Composition</th>
+          <th style="text-align:center; padding:0.6rem 0.8rem; color:var(--text);">Inverse</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:0.5rem 0.8rem; color:var(--text);">TransE</td>
+          <td style="text-align:center; padding:0.5rem; color:var(--muted);">&#x2717;</td>
+          <td style="text-align:center; padding:0.5rem; color:var(--green);">&#x2713;</td>
+          <td style="text-align:center; padding:0.5rem; color:var(--green);">&#x2713;</td>
+          <td style="text-align:center; padding:0.5rem; color:var(--green);">&#x2713;</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:0.5rem 0.8rem; color:var(--text);">DistMult</td>
+          <td style="text-align:center; padding:0.5rem; color:var(--green);">&#x2713;</td>
+          <td style="text-align:center; padding:0.5rem; color:var(--muted);">&#x2717;</td>
+          <td style="text-align:center; padding:0.5rem; color:var(--muted);">&#x2717;</td>
+          <td style="text-align:center; padding:0.5rem; color:var(--muted);">&#x2717;</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:0.5rem 0.8rem; color:var(--text);">ComplEx</td>
+          <td style="text-align:center; padding:0.5rem; color:var(--green);">&#x2713;</td>
+          <td style="text-align:center; padding:0.5rem; color:var(--green);">&#x2713;</td>
+          <td style="text-align:center; padding:0.5rem; color:var(--muted);">&#x2717;</td>
+          <td style="text-align:center; padding:0.5rem; color:var(--green);">&#x2713;</td>
+        </tr>
+        <tr>
+          <td style="padding:0.5rem 0.8rem; color:var(--green); font-weight:bold;">RotatE</td>
+          <td style="text-align:center; padding:0.5rem; color:var(--green);">&#x2713;</td>
+          <td style="text-align:center; padding:0.5rem; color:var(--green);">&#x2713;</td>
+          <td style="text-align:center; padding:0.5rem; color:var(--green);">&#x2713;</td>
+          <td style="text-align:center; padding:0.5rem; color:var(--green);">&#x2713;</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Negative Sampling: The Hostel Rumour Mill</h2>
+
+    <p>Training a graph embedding model needs both positive examples (real edges) and negative examples (fake edges). You know what a real edge looks like: <em>(Amit, borrows_charger_from, Rahul)</em> - this actually happened.</p>
+
+    <p>But what about negatives? We need edges that are <strong>not</strong> in the graph. So we "corrupt" real edges by swapping either the source or destination with a random entity:</p>
+
+    <ul>
+      <li>Real: <em>(Amit, borrows_charger_from, Rahul)</em></li>
+      <li>Fake: <em>(Amit, borrows_charger_from, Priya)</em> - never happened</li>
+      <li>Fake: <em>(Deepak, borrows_charger_from, Rahul)</em> - also never happened</li>
+    </ul>
+
+    <p>The model's job: give high scores to real edges and low scores to fake ones. The loss function looks something like:</p>
+
+    $$\mathcal{L} = \max\!\left(0,\;\text{margin} - \text{score}(\text{positive}) + \text{score}(\text{negative})\right)$$
+
+    <p>This is a margin-based ranking loss. We want the positive score to be higher than the negative score by at least a <em>margin</em>. Think of it as training a bouncer - show them real IDs and fake IDs, and they learn to tell the difference.</p>
+
+    <p>For every real edge, PBG generates around 100-1000 negatives. That sounds like a lot, but random corruption is cheap, and it massively helps the model learn discriminative embeddings.</p>
+
+    <p>One clever trick PBG uses: <strong>batch negatives</strong>. Instead of generating fresh random negatives for every edge, it reuses the destination entities from other edges in the same batch as negatives. If a batch has 1000 edges, each destination can serve as a negative for all other edges in the batch. This is computationally free and surprisingly effective.</p>
+
+    <!-- Visualization 4: Negative Sampling Pipeline -->
+    <svg viewBox="0 0 680 300" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:100%;margin:2.5rem 0;" font-family="'Geist Mono',monospace">
+      <text x="340" y="20" text-anchor="middle" fill="var(--muted)" font-size="11" letter-spacing="0.08em">NEGATIVE SAMPLING - THE RUMOUR MILL</text>
+
+      <!-- Real edge -->
+      <rect x="20" y="50" width="190" height="60" rx="8" fill="var(--green)" opacity="0.1" stroke="var(--green)" stroke-width="1.5"/>
+      <text x="115" y="70" text-anchor="middle" fill="var(--green)" font-size="10" font-weight="bold">Real Edge</text>
+      <text x="115" y="90" text-anchor="middle" fill="var(--text)" font-size="10">(Amit, borrows, Rahul)</text>
+      <text x="115" y="102" text-anchor="middle" fill="var(--green)" font-size="9">&#x2713; actually happened</text>
+
+      <!-- Arrow: corrupt -->
+      <line x1="215" y1="80" x2="260" y2="80" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ah2)"/>
+      <text x="238" y="72" text-anchor="middle" fill="var(--muted)" font-size="8">corrupt</text>
+
+      <!-- Fake edges -->
+      <rect x="265" y="40" width="195" height="35" rx="6" fill="var(--surface)" stroke="var(--border)" stroke-width="1" stroke-dasharray="4 3"/>
+      <text x="362" y="55" text-anchor="middle" fill="var(--muted)" font-size="9">(Amit, borrows, <tspan fill="var(--text)" font-weight="bold">Priya</tspan>)</text>
+      <text x="362" y="69" text-anchor="middle" fill="var(--muted)" font-size="8">&#x2717; swap destination</text>
+
+      <rect x="265" y="85" width="195" height="35" rx="6" fill="var(--surface)" stroke="var(--border)" stroke-width="1" stroke-dasharray="4 3"/>
+      <text x="362" y="100" text-anchor="middle" fill="var(--muted)" font-size="9">(<tspan fill="var(--text)" font-weight="bold">Deepak</tspan>, borrows, Rahul)</text>
+      <text x="362" y="114" text-anchor="middle" fill="var(--muted)" font-size="8">&#x2717; swap source</text>
+
+      <!-- Arrow: score both -->
+      <line x1="465" y1="80" x2="510" y2="80" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ah2)"/>
+      <text x="488" y="72" text-anchor="middle" fill="var(--muted)" font-size="8">score</text>
+
+      <!-- Score comparison -->
+      <rect x="515" y="42" width="150" height="80" rx="8" fill="var(--code-bg)" stroke="var(--border)" stroke-width="1"/>
+      <text x="590" y="62" text-anchor="middle" fill="var(--green)" font-size="10">score(real) = 0.9</text>
+      <line x1="530" y1="72" x2="650" y2="72" stroke="var(--border)" stroke-width="1"/>
+      <text x="590" y="90" text-anchor="middle" fill="var(--muted)" font-size="10">score(fake) = 0.2</text>
+      <text x="590" y="110" text-anchor="middle" fill="var(--text)" font-size="9">margin = 0.5 ✓</text>
+
+      <!-- Loss formula section -->
+      <rect x="80" y="150" width="520" height="55" rx="8" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="340" y="172" text-anchor="middle" fill="var(--text)" font-size="11">Loss = max(0, margin − score(real) + score(fake))</text>
+      <text x="340" y="192" text-anchor="middle" fill="var(--muted)" font-size="10">push real scores UP, fake scores DOWN</text>
+
+      <!-- Bouncer analogy -->
+      <rect x="120" y="225" width="440" height="60" rx="8" fill="var(--code-bg)" stroke="var(--green)" stroke-width="1" stroke-dasharray="5 3"/>
+      <text x="340" y="248" text-anchor="middle" fill="var(--green)" font-size="11">Like training a bouncer:</text>
+      <text x="340" y="268" text-anchor="middle" fill="var(--text)" font-size="10">show real IDs + fake IDs → learn to tell the difference</text>
+      <text x="340" y="282" text-anchor="middle" fill="var(--muted)" font-size="9">~100-1000 fakes per real edge</text>
+    </svg>
+
+    <h2>The Training Loop</h2>
+
+    <p>Putting it all together, here's how PBG trains:</p>
+
+    <ol>
+      <li><strong>Partition</strong> the graph into $P$ partitions, creating a $P \times P$ grid of edge buckets.</li>
+      <li><strong>For each epoch:</strong>
+        <ul>
+          <li>Pick a bucket $(i, j)$ via the scheduler.</li>
+          <li>Load embeddings for partition $i$ (source) and partition $j$ (destination) - memory-mapped.</li>
+          <li>Load all edges in this bucket.</li>
+          <li>For each batch of edges: compute scores for positives, generate negative samples, compute scores for negatives, compute loss, backpropagate, update embeddings.</li>
+          <li>Write updated embeddings back (memory-mapped flush).</li>
+          <li>Release partitions, pick next bucket.</li>
+        </ul>
+      </li>
+      <li><strong>In distributed mode:</strong> multiple machines process different buckets simultaneously, with lock-based coordination to avoid conflicts on shared partitions.</li>
+    </ol>
+
+    <p>The beauty is that step 2 only loads $\frac{2}{P}$ of all embeddings. Everything else stays on disk, untouched, until its turn comes. This is what makes billion-scale training feasible.</p>
+
+    <h2>Results: The Numbers Speak</h2>
+
+    <p>PBG was benchmarked on some serious datasets:</p>
+
+    <ul>
+      <li><strong>Freebase</strong> (knowledge graph): 40M entities, 539M edges - trained in ~30 minutes on 8 GPUs. Methods like node2vec would take <em>days</em> on this.</li>
+      <li><strong>LiveJournal</strong> (social network): 4.8M users, 68M edges - competitive MRR and Hits@10 with fraction of the compute.</li>
+      <li><strong>Facebook's internal graph</strong>: 2 billion nodes - the results were never published (privacy), but the fact that it <em>ran</em> is the flex.</li>
+    </ul>
+
+    <p>The scaling is near-linear: throw in 8 machines, get ~8x speedup. 99% efficiency. No parameter server needed - just peer-to-peer synchronization of the shared partitions.</p>
+
+    <h2>When to Use PBG (and When Not to)</h2>
+
+    <p><strong>Use PBG when:</strong></p>
+    <ul>
+      <li>Your graph has <strong>millions to billions</strong> of nodes - this is PBG's sweet spot.</li>
+      <li>You have <strong>multiple relation types</strong> (knowledge graphs, heterogeneous networks).</li>
+      <li>You need <strong>fixed embeddings</strong> for downstream tasks (nearest-neighbour search, clustering, link prediction).</li>
+      <li>You have access to distributed hardware.</li>
+    </ul>
+
+    <p><strong>Don't use PBG when:</strong></p>
+    <ul>
+      <li>You need <strong>inductive learning</strong> - PBG is transductive. It can't generate embeddings for unseen nodes without retraining. Use GraphSAGE or GNNs instead.</li>
+      <li>Your graph has <strong>rich node features</strong> (text, images, etc.) - PBG is structure-only. It ignores node features entirely.</li>
+      <li>Your graph is small (&lt; 1M nodes) - use simpler methods like node2vec. PBG's overhead isn't worth it.</li>
+    </ul>
+
+    <h2>The Hostel Graph, One Last Time</h2>
+
+    <p>So back to our hostel. If you wanted to embed the entire university's social graph - 50,000 students, hundreds of thousands of edges across multiple relation types - PBG would:</p>
+
+    <ol>
+      <li>Split students into wings (partitions).</li>
+      <li>Process wing-by-wing, loading only two wings at a time.</li>
+      <li>Learn that Amit and Rahul are close in embedding space (lots of shared edges), that the <code>steals_maggi_from</code> relation is highly asymmetric (it's always Deepak doing the stealing), and that <code>roommates_with</code> is perfectly symmetric.</li>
+      <li>Give you embeddings that you could use to predict: who will Deepak steal Maggi from next? Which new students are most likely to become friends?</li>
+    </ol>
+
+    <p>And it would do all of this without ever loading the entire graph into memory. That's the magic of PBG.</p>
+
+    <p>I hope you learned something new today. Now go check if your hostel has a graph embedding for your Maggi theft patterns.</p>
+
+    <h2>References</h2>
+
+    <p><a class="text-link" href="https://arxiv.org/abs/1903.12287">PyTorch-BigGraph: A Large-scale Graph Embedding System</a> - Lerer et al., Facebook AI Research, 2019<br>
+    <a class="text-link" href="https://github.com/facebookresearch/PyTorch-BigGraph">Official GitHub Repository</a><br>
+    <a class="text-link" href="https://arxiv.org/abs/1902.10197">RotatE: Knowledge Graph Embedding by Relational Rotation in Complex Space</a> - Sun et al., 2019<br>
+    <a class="text-link" href="https://papers.nips.cc/paper/2013/hash/1cecc7a77928ca8133fa24680a88d2f9-Abstract.html">TransE: Translating Embeddings for Modeling Multi-relational Data</a> - Bordes et al., 2013</p>
+
+  </article>
+
+  <div class="post-nav">
+    <a href="../index.html" class="text-link">← all posts</a>
+  </div>
+
+  <footer>
+    <span class="footer-left">© 2026 Shubham Mishra</span>
+    <ul class="footer-links">
+      <li><a href="https://github.com/ShubhamMishra1611">github</a></li>
+      <li><a href="#">twitter</a></li>
+      <li><a href="#">rss</a></li>
+    </ul>
+  </footer>
+
+</body>
+</html>
