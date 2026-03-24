@@ -190,7 +190,7 @@ nav {
   font-size: 1rem;
   line-height: 1.82;
   color: var(--subtle);
-  max-width: 560px;
+  max-width: 680px;
 }
 
 .intro p + p { margin-top: 0.9rem; }
