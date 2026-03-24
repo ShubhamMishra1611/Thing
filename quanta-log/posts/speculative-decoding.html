@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Speculative Decoding — quanta-log</title>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="../assets/style.css" />
+
+  <!-- KaTeX -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+    onload="renderMathInElement(document.body, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}]});"></script>
+
+  <!-- Theme (apply before paint) -->
+  <script src="../assets/theme.js"></script>
+</head>
+<body class="post-page">
+
+  <nav>
+    <a href="/" class="logo">shubham</a>
+    <ul class="nav-right">
+      <li><a href="/posts">posts</a></li>
+      <li><a href="/#topics">topics</a></li>
+      <li><a href="/about.html">about</a></li>
+      <li>
+        <button class="theme-toggle" onclick="toggleTheme()">
+          <svg class="theme-icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+          <svg class="theme-icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+      </li>
+    </ul>
+  </nav>
+
+  <div class="post-header">
+    <div style="display:flex; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap;">
+      <span class="tag">LLM</span>
+      <span class="tag">decoding</span>
+      <span class="tag">inference</span>
+    </div>
+    <h1>Speculative Decoding: LLM be like You start bro, I've got your back</h1>
+    <div class="post-meta">
+      <span>Jan 9 2025</span>
+      <span>6 min read</span>
+      <span>Shubham Mishra</span>
+    </div>
+  </div>
+
+  <article>
+
+    <p>
+      When AI generates text, it determines the next word based on patterns it has learned from vast amounts of data. This process is known as decoding. One very 'clean' method of decoding is Speculative Decoding.
+    </p>
+
+    <h2>Decoding</h2>
+
+    <p>
+      So decoding is selecting the following word (or token) in a sentence. But here's the tricky part: balancing speed, quality, and creativity.
+    </p>
+
+    <p>
+      When writing a story (I mean when an LLM is generating text), you could choose the most likely word every time — that's Greedy Decoding, straightforward, with no extra effort, and deterministic. Or, you might select from a range of possible words, introducing a bit of randomness for more varied outcomes — this is Nucleus Sampling. Both are familiar techniques that guide how text is generated, but they each have their limitations in terms of balance between predictability and creativity. Speculative Decoding builds on these methods. Instead, it takes things to another level, using <strong>more</strong> LLMs to enhance speed and coherence without sacrificing flexibility.
+    </p>
+
+    <p>WHHAAAAAT?</p>
+
+    <!-- SVG: Autoregressive vs Speculative Comparison -->
+    <svg viewBox="0 0 540 300" xmlns="http://www.w3.org/2000/svg" style="width:100%; max-width:540px; margin:2rem auto; display:block;">
+      <style>
+        .sd-label { font-family: 'Geist Mono', monospace; font-size: 10px; fill: var(--muted); }
+        .sd-code  { font-family: 'Geist Mono', monospace; font-size: 11px; fill: var(--text); }
+        .sd-title { font-family: 'Geist Mono', monospace; font-size: 12px; fill: var(--text); font-weight: 600; }
+        .sd-green { fill: var(--green); }
+        .sd-red   { fill: #ff5f57; }
+      </style>
+
+      <!-- Autoregressive side -->
+      <text x="20" y="20" class="sd-title">Autoregressive (standard)</text>
+      <text x="20" y="35" class="sd-label">1 token per forward pass</text>
+
+      <!-- Timeline: 5 steps, each one token -->
+      <rect x="20" y="50" width="70" height="32" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="55" y="71" class="sd-code" text-anchor="middle">The</text>
+      <text x="55" y="95" class="sd-label" text-anchor="middle">step 1</text>
+
+      <line x1="90" y1="66" x2="105" y2="66" stroke="var(--muted)" stroke-width="1"/>
+      <polygon points="103,63 103,69 109,66" fill="var(--muted)"/>
+
+      <rect x="110" y="50" width="70" height="32" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="145" y="71" class="sd-code" text-anchor="middle">cat</text>
+      <text x="145" y="95" class="sd-label" text-anchor="middle">step 2</text>
+
+      <line x1="180" y1="66" x2="195" y2="66" stroke="var(--muted)" stroke-width="1"/>
+      <polygon points="193,63 193,69 199,66" fill="var(--muted)"/>
+
+      <rect x="200" y="50" width="70" height="32" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="235" y="71" class="sd-code" text-anchor="middle">sat</text>
+      <text x="235" y="95" class="sd-label" text-anchor="middle">step 3</text>
+
+      <line x1="270" y1="66" x2="285" y2="66" stroke="var(--muted)" stroke-width="1"/>
+      <polygon points="283,63 283,69 289,66" fill="var(--muted)"/>
+
+      <rect x="290" y="50" width="70" height="32" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="325" y="71" class="sd-code" text-anchor="middle">on</text>
+      <text x="325" y="95" class="sd-label" text-anchor="middle">step 4</text>
+
+      <line x1="360" y1="66" x2="375" y2="66" stroke="var(--muted)" stroke-width="1"/>
+      <polygon points="373,63 373,69 379,66" fill="var(--muted)"/>
+
+      <rect x="380" y="50" width="70" height="32" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="415" y="71" class="sd-code" text-anchor="middle">the</text>
+      <text x="415" y="95" class="sd-label" text-anchor="middle">step 5</text>
+
+      <text x="480" y="71" class="sd-label">5 steps</text>
+      <text x="480" y="83" class="sd-label">5 passes</text>
+
+      <!-- Divider -->
+      <line x1="20" y1="115" x2="520" y2="115" stroke="var(--border)" stroke-width="1" stroke-dasharray="4,4"/>
+
+      <!-- Speculative side -->
+      <text x="20" y="138" class="sd-title">Speculative Decoding</text>
+      <text x="20" y="153" class="sd-label">draft k tokens, verify in 1 pass</text>
+
+      <!-- Draft phase -->
+      <rect x="20" y="168" width="300" height="55" rx="6" fill="var(--code-bg)" stroke="var(--border)" stroke-width="1"/>
+      <text x="30" y="185" class="sd-label">Draft Model (fast)</text>
+
+      <rect x="30" y="195" width="55" height="22" rx="3" fill="var(--surface)" stroke="var(--green)" stroke-width="1"/>
+      <text x="57" y="210" class="sd-code" text-anchor="middle">The</text>
+
+      <rect x="95" y="195" width="55" height="22" rx="3" fill="var(--surface)" stroke="var(--green)" stroke-width="1"/>
+      <text x="122" y="210" class="sd-code" text-anchor="middle">cat</text>
+
+      <rect x="160" y="195" width="55" height="22" rx="3" fill="var(--surface)" stroke="var(--green)" stroke-width="1"/>
+      <text x="187" y="210" class="sd-code" text-anchor="middle">sat</text>
+
+      <rect x="225" y="195" width="55" height="22" rx="3" fill="var(--surface)" stroke="var(--green)" stroke-width="1"/>
+      <text x="252" y="210" class="sd-code" text-anchor="middle">on</text>
+
+      <!-- Arrow to verify -->
+      <line x1="320" y1="195" x2="345" y2="195" stroke="var(--green)" stroke-width="1.5"/>
+      <polygon points="343,192 343,198 349,195" fill="var(--green)"/>
+
+      <!-- Verify phase -->
+      <rect x="350" y="168" width="170" height="55" rx="6" fill="var(--code-bg)" stroke="var(--green)" stroke-width="1.5"/>
+      <text x="360" y="185" class="sd-label sd-green">Target Model (1 pass)</text>
+
+      <text x="370" y="205" class="sd-code sd-green">verify all 4</text>
+      <text x="370" y="218" class="sd-code sd-green">+ generate 1 more</text>
+
+      <!-- Result -->
+      <rect x="20" y="240" width="500" height="45" rx="6" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="30" y="258" class="sd-label">Result:</text>
+
+      <text x="80" y="258" class="sd-code sd-green">The</text>
+      <text x="110" y="270" class="sd-label">✓</text>
+
+      <text x="130" y="258" class="sd-code sd-green">cat</text>
+      <text x="155" y="270" class="sd-label">✓</text>
+
+      <text x="175" y="258" class="sd-code sd-green">sat</text>
+      <text x="200" y="270" class="sd-label">✓</text>
+
+      <text x="220" y="258" class="sd-code sd-red">in</text>
+      <text x="240" y="270" class="sd-label" style="fill:#ff5f57">✗ → on</text>
+
+      <text x="290" y="258" class="sd-code sd-green">the</text>
+      <text x="320" y="270" class="sd-label">+1 bonus</text>
+
+      <text x="390" y="262" class="sd-title">2 steps, 5 tokens!</text>
+    </svg>
+
+    <h2>Speculative Decoding: A Tag Team of Models</h2>
+
+    <p>
+      Think of Speculative Decoding like teamwork. You've got:
+    </p>
+
+    <ul>
+      <li>The Draft Model: A quick, smaller AI that proposes a few word options, like a junior writer brainstorming ideas.</li>
+      <li>The Target Model: A larger, more accurate AI that reviews and approves (or rejects) those options, like an experienced editor.</li>
+    </ul>
+
+    <p>
+      The idea is that a small model can predict "obvious" tokens well with high confidence, but tokens that need a deeper knowledge base should be handled by a bigger model.
+    </p>
+
+    <p>Here's how it works:</p>
+
+    <ol>
+      <li><strong>Draft Tokens</strong>: The draft model quickly predicts a short list of words (let's say 4).</li>
+      <li><strong>Evaluation</strong>: The target model evaluates these suggestions, checking if they align with its understanding. This is done by checking the ratio of the probability of the token from both the Target and Draft model</li>
+      <li><strong>Acceptance or Rejection</strong>: The final word is chosen based on rejection sampling, ensuring it matches the target model's "style."</li>
+    </ol>
+
+    <!-- SVG: Draft-Target Pipeline -->
+    <svg viewBox="0 0 540 340" xmlns="http://www.w3.org/2000/svg" style="width:100%; max-width:540px; margin:2rem auto; display:block;">
+      <style>
+        .pip-label { font-family: 'Geist Mono', monospace; font-size: 10px; fill: var(--muted); }
+        .pip-code  { font-family: 'Geist Mono', monospace; font-size: 11px; fill: var(--text); }
+        .pip-title { font-family: 'Geist Mono', monospace; font-size: 12px; fill: var(--text); font-weight: 600; }
+        .pip-green { fill: var(--green); }
+      </style>
+
+      <text x="270" y="18" class="pip-title" text-anchor="middle">Speculative Decoding Pipeline</text>
+
+      <!-- Step 1: Draft Model -->
+      <rect x="20" y="35" width="500" height="70" rx="8" fill="var(--code-bg)" stroke="var(--border)" stroke-width="1"/>
+      <text x="35" y="55" class="pip-title">Step 1: Draft Model (small, fast)</text>
+      <text x="35" y="70" class="pip-label">generates k=4 candidate tokens autoregressively</text>
+
+      <rect x="35" y="80" width="50" height="20" rx="3" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="60" y="94" class="pip-code" text-anchor="middle">t₁</text>
+      <rect x="95" y="80" width="50" height="20" rx="3" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="120" y="94" class="pip-code" text-anchor="middle">t₂</text>
+      <rect x="155" y="80" width="50" height="20" rx="3" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="180" y="94" class="pip-code" text-anchor="middle">t₃</text>
+      <rect x="215" y="80" width="50" height="20" rx="3" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="240" y="94" class="pip-code" text-anchor="middle">t₄</text>
+
+      <!-- draft probabilities -->
+      <text x="310" y="90" class="pip-label">p(t₁), p(t₂), p(t₃), p(t₄)</text>
+
+      <!-- Arrow down -->
+      <line x1="270" y1="105" x2="270" y2="130" stroke="var(--muted)" stroke-width="1.5"/>
+      <polygon points="267,128 273,128 270,135" fill="var(--muted)"/>
+      <text x="280" y="122" class="pip-label">send all k tokens</text>
+
+      <!-- Step 2: Target Model -->
+      <rect x="20" y="135" width="500" height="70" rx="8" fill="var(--code-bg)" stroke="var(--green)" stroke-width="1.5"/>
+      <text x="35" y="155" class="pip-title">Step 2: Target Model (large, accurate)</text>
+      <text x="35" y="170" class="pip-label">evaluates all k tokens in ONE forward pass (parallel)</text>
+
+      <rect x="35" y="178" width="50" height="20" rx="3" fill="var(--surface)" stroke="var(--green)" stroke-width="1"/>
+      <text x="60" y="192" class="pip-code" text-anchor="middle">q(t₁)</text>
+      <rect x="95" y="178" width="50" height="20" rx="3" fill="var(--surface)" stroke="var(--green)" stroke-width="1"/>
+      <text x="120" y="192" class="pip-code" text-anchor="middle">q(t₂)</text>
+      <rect x="155" y="178" width="50" height="20" rx="3" fill="var(--surface)" stroke="var(--green)" stroke-width="1"/>
+      <text x="180" y="192" class="pip-code" text-anchor="middle">q(t₃)</text>
+      <rect x="215" y="178" width="50" height="20" rx="3" fill="var(--surface)" stroke="var(--green)" stroke-width="1"/>
+      <text x="240" y="192" class="pip-code" text-anchor="middle">q(t₄)</text>
+
+      <text x="310" y="192" class="pip-label pip-green">compares q(tᵢ) / p(tᵢ)</text>
+
+      <!-- Arrow down -->
+      <line x1="270" y1="205" x2="270" y2="230" stroke="var(--muted)" stroke-width="1.5"/>
+      <polygon points="267,228 273,228 270,235" fill="var(--muted)"/>
+
+      <!-- Step 3: Accept/Reject -->
+      <rect x="20" y="235" width="500" height="90" rx="8" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+      <text x="35" y="255" class="pip-title">Step 3: Rejection Sampling</text>
+
+      <!-- Token results -->
+      <rect x="35" y="265" width="50" height="24" rx="3" fill="var(--surface)" stroke="var(--green)" stroke-width="1.5"/>
+      <text x="60" y="281" class="pip-code pip-green" text-anchor="middle">t₁ ✓</text>
+
+      <rect x="95" y="265" width="50" height="24" rx="3" fill="var(--surface)" stroke="var(--green)" stroke-width="1.5"/>
+      <text x="120" y="281" class="pip-code pip-green" text-anchor="middle">t₂ ✓</text>
+
+      <rect x="155" y="265" width="50" height="24" rx="3" fill="var(--surface)" stroke="#ff5f57" stroke-width="1.5"/>
+      <text x="180" y="281" class="pip-code" text-anchor="middle" style="fill:#ff5f57">t₃ ✗</text>
+
+      <!-- Resample arrow -->
+      <line x1="205" y1="277" x2="230" y2="277" stroke="#ff5f57" stroke-width="1"/>
+      <polygon points="228,274 228,280 234,277" fill="#ff5f57"/>
+
+      <rect x="235" y="265" width="60" height="24" rx="3" fill="var(--surface)" stroke="var(--green)" stroke-width="1.5"/>
+      <text x="265" y="281" class="pip-code pip-green" text-anchor="middle">t₃' ✓</text>
+      <text x="235" y="303" class="pip-label" style="fill:#ff5f57">resampled</text>
+      <text x="235" y="315" class="pip-label" style="fill:#ff5f57">from (q-p)⁺</text>
+
+      <!-- Stop marker -->
+      <line x1="310" y1="260" x2="310" y2="295" stroke="var(--border)" stroke-width="1" stroke-dasharray="3,3"/>
+      <text x="320" y="275" class="pip-label">stop here</text>
+      <text x="320" y="287" class="pip-label">remaining drafts</text>
+      <text x="320" y="299" class="pip-label">discarded</text>
+
+      <!-- Bonus token -->
+      <rect x="430" y="265" width="75" height="24" rx="3" fill="var(--code-bg)" stroke="var(--green)" stroke-width="1.5"/>
+      <text x="467" y="281" class="pip-code pip-green" text-anchor="middle">t₄ᴮ +1</text>
+      <text x="430" y="303" class="pip-label pip-green">bonus token</text>
+      <text x="430" y="315" class="pip-label pip-green">from target</text>
+    </svg>
+
+    <p>
+      It's like a junior writer scribbles some lines, and the editor either approves them or rewrites them to perfection. Efficient, right?
+    </p>
+
+    <h2>Rejection Sampling: Quality Control</h2>
+
+    <p>
+      Let's zoom in on rejection sampling — it's the most important point of Speculative Decoding, the bit that ensures quality.
+    </p>
+
+    <p>
+      The idea is simple: the draft model proposes a word (or token), and the target model decides if it "likes" it enough to accept. But how does it decide? Here's the formula:
+    </p>
+
+    <p>
+      $$\text{Acceptance Probability} = \min\!\left(1,\; \frac{q(x)}{p(x)}\right)$$
+    </p>
+
+    <p>Here:</p>
+
+    <ul>
+      <li>$q$ is the probability assigned by the target model to a token.</li>
+      <li>$p$ is the probability from the draft model to a token.</li>
+    </ul>
+
+    <!-- SVG: Rejection Sampling Decision -->
+    <svg viewBox="0 0 540 320" xmlns="http://www.w3.org/2000/svg" style="width:100%; max-width:540px; margin:2rem auto; display:block;">
+      <style>
+        .rs-label { font-family: 'Geist Mono', monospace; font-size: 10px; fill: var(--muted); }
+        .rs-code  { font-family: 'Geist Mono', monospace; font-size: 11px; fill: var(--text); }
+        .rs-title { font-family: 'Geist Mono', monospace; font-size: 12px; fill: var(--text); font-weight: 600; }
+        .rs-green { fill: var(--green); }
+        .rs-red   { fill: #ff5f57; }
+      </style>
+
+      <text x="270" y="18" class="rs-title" text-anchor="middle">Rejection Sampling: Two Cases</text>
+
+      <!-- Case 1: q >= p (Accept) -->
+      <rect x="15" y="35" width="245" height="265" rx="8" fill="var(--code-bg)" stroke="var(--green)" stroke-width="1.5"/>
+      <text x="137" y="55" class="rs-title" text-anchor="middle">Case 1: q ≥ p</text>
+      <text x="137" y="70" class="rs-label" text-anchor="middle">target likes it MORE → always accept</text>
+
+      <!-- Bar chart: p and q bars -->
+      <text x="70" y="95" class="rs-label" text-anchor="middle">p(token)</text>
+      <text x="175" y="95" class="rs-label" text-anchor="middle">q(token)</text>
+
+      <!-- p bar (shorter) -->
+      <rect x="45" y="130" width="50" height="80" rx="3" fill="var(--muted)" opacity="0.4"/>
+      <text x="70" y="125" class="rs-code" text-anchor="middle">0.3</text>
+
+      <!-- q bar (taller) -->
+      <rect x="150" y="100" width="50" height="110" rx="3" fill="var(--green)" opacity="0.4"/>
+      <text x="175" y="95" class="rs-code rs-green" text-anchor="middle">0.5</text>
+
+      <!-- baseline -->
+      <line x1="30" y1="210" x2="220" y2="210" stroke="var(--border)" stroke-width="1"/>
+
+      <!-- ratio -->
+      <text x="137" y="235" class="rs-code" text-anchor="middle">q/p = 0.5/0.3 = 1.67</text>
+      <text x="137" y="252" class="rs-code" text-anchor="middle">min(1, 1.67) = 1.0</text>
+
+      <!-- result -->
+      <rect x="55" y="265" width="160" height="25" rx="5" fill="var(--surface)" stroke="var(--green)" stroke-width="1.5"/>
+      <text x="137" y="282" class="rs-code rs-green" text-anchor="middle">100% accept ✓</text>
+
+      <!-- Divider -->
+      <line x1="270" y1="40" x2="270" y2="295" stroke="var(--border)" stroke-width="1" stroke-dasharray="4,4"/>
+
+      <!-- Case 2: q < p (Probabilistic) -->
+      <rect x="280" y="35" width="245" height="265" rx="8" fill="var(--code-bg)" stroke="var(--border)" stroke-width="1.5"/>
+      <text x="402" y="55" class="rs-title" text-anchor="middle">Case 2: q &lt; p</text>
+      <text x="402" y="70" class="rs-label" text-anchor="middle">target less sure → coin flip</text>
+
+      <!-- Bar chart -->
+      <text x="335" y="95" class="rs-label" text-anchor="middle">p(token)</text>
+      <text x="440" y="95" class="rs-label" text-anchor="middle">q(token)</text>
+
+      <!-- p bar (taller) -->
+      <rect x="310" y="100" width="50" height="110" rx="3" fill="var(--muted)" opacity="0.4"/>
+      <text x="335" y="95" class="rs-code" text-anchor="middle">0.6</text>
+
+      <!-- q bar (shorter) -->
+      <rect x="415" y="150" width="50" height="60" rx="3" fill="#ff5f57" opacity="0.3"/>
+      <text x="440" y="145" class="rs-code" text-anchor="middle" style="fill:#ff5f57">0.2</text>
+
+      <!-- baseline -->
+      <line x1="295" y1="210" x2="485" y2="210" stroke="var(--border)" stroke-width="1"/>
+
+      <!-- ratio -->
+      <text x="402" y="235" class="rs-code" text-anchor="middle">q/p = 0.2/0.6 = 0.33</text>
+      <text x="402" y="252" class="rs-code" text-anchor="middle">min(1, 0.33) = 0.33</text>
+
+      <!-- result -->
+      <rect x="310" y="265" width="180" height="25" rx="5" fill="var(--surface)" stroke="#ff5f57" stroke-width="1.5"/>
+      <text x="402" y="282" class="rs-code" text-anchor="middle" style="fill:#ff5f57">33% accept, 67% reject</text>
+    </svg>
+
+    <p>
+      If $q/p$ is greater than 1, the target model is confident that the draft model's suggestion is solid, and accepted without question. If it's less than 1, the decision to accept is based on a coin flip weighted by this ratio.
+    </p>
+
+    <h3>Handling Rejected Tokens</h3>
+
+    <p>
+      When the target model rejects a draft token, it doesn't leave you hanging. Instead, it samples a replacement from a corrected distribution:
+    </p>
+
+    <p>
+      $$\text{Resampled Token} \sim \bigl(q(x) - p(x)\bigr)^{+}$$
+    </p>
+
+    <p>
+      A very nice mathematical proof is given for rejection sampling called "Modified Rejection Sampling recovers the target distribution" theorem in the original paper, here check it out <a href="https://arxiv.org/pdf/2302.01318" class="text-link">https://arxiv.org/pdf/2302.01318</a>
+    </p>
+
+    <p>
+      From what I understood, the target model "fills in the gap" left by the draft model's misfire. Here's why this is important:
+    </p>
+
+    <ul>
+      <li>If $q$ is much larger than $p$, the target model ensures the extra probability is accounted for.</li>
+      <li>If $p$ is overshot, the target model reins it back in.</li>
+    </ul>
+
+    <p>
+      Even if all tokens are rejected, at least one valid token is always generated in each draft-accept loop. This guarantees progress without sacrificing the overall quality of the generated text.
+    </p>
+
+    <hr>
+
+    <p>
+      In addition to this, I read that an awesome extension for this approach:
+    </p>
+
+    <p>
+      <strong>Using Multiple Speculative Heads</strong><br>
+      Multi-Head Speculative Decoding extends Speculative Decoding by adding "speculative heads" to predict tokens for multiple positions (e.g., N+1, N+2, N+3) in one pass, speeding up generation. But, this approach can challenge efficiency and prediction quality, as all heads rely on a shared key-value (KV) cache, requiring alignment with the primary model for consistency.
+    </p>
+
+    <p>
+      <strong>Paged Attention and KV-Cache Optimization</strong><br>
+      Paged Attention optimizes multi-head decoding by allowing all heads to share a single KV cache. This prevents memory overload. This solution scales linearly with the number of heads.
+    </p>
+
+    <p>
+      And that's a wrap! Let me know your thoughts or if you find any discrepancies.
+    </p>
+
+  </article>
+
+  <div class="post-nav">
+    <a href="/">← all posts</a>
+    <a href="weakly-supervised-learning-part1.html">Weakly Supervised Learning →</a>
+  </div>
+
+  <footer>
+    <span style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">© 2026 Shubham Mishra</span>
+    <div style="display:flex; gap:1.5rem;">
+      <a href="https://github.com/ShubhamMishra1611" style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">github</a>
+      <a href="https://twitter.com/" style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">twitter</a>
+    </div>
+  </footer>
+
+</body>
+</html>
