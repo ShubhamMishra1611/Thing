@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shubham Mishra — quanta-log</title>
+  <link rel="stylesheet" href="../assets/style.css" />
+  <script src="../assets/theme.js"></script>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="logo">shubham</a>
+  <ul class="nav-right">
+    <li><a href="#">writing</a></li>
+    <li><a href="#topics">topics</a></li>
+    <li><a href="#">about</a></li>
+    <li><a href="#">rss</a></li>
+    <li>
+      <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+        <svg class="theme-icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="5"/>
+          <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+          <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+        <svg class="theme-icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </button>
+    </li>
+  </ul>
+</nav>
+
+<div class="intro">
+  <div class="intro-eyebrow">
+    <span class="live-dot"></span>
+    <span class="eyebrow-text">writing</span>
+  </div>
+  <h1>Learning ML out loud.</h1>
+  <p>ML internals, Python, inference tricks, random graph stuff. Whatever I'm learning that week.</p>
+  <p>Mostly notes to my future self. You're welcome to read along.</p>
+</div>
+
+<div class="section-label" style="margin-bottom:1.4rem;">Latest</div>
+
+<a class="featured" href="posts/native-sparse-attention.html">
+  <div class="featured-top">
+    <span class="featured-title">Native Sparse Attention — Hardware-Efficient Sparsity</span>
+    <span class="new-badge">new</span>
+  </div>
+  <p class="featured-desc">NSA introduces blockwise selection with learned gates. The surprising result: sparsity and hardware efficiency aren't at odds. A complete breakdown of the three algorithms, the gate mechanism, and annotated PyTorch.</p>
+  <div class="featured-footer">
+    <div class="post-tags">
+      <span class="tag">attention</span>
+      <span class="tag">paper</span>
+      <span class="tag">pytorch</span>
+    </div>
+    <span class="read-time">Feb 22 · 5 min</span>
+  </div>
+</a>
+
+<ul class="post-list">
+  <a class="post-item" href="posts/speculative-decoding.html">
+    <div class="post-item-left">
+      <span class="post-item-title">Speculative Decoding</span>
+      <span class="post-item-sub">Draft-target tag team, rejection sampling, multi-head extensions</span>
+    </div>
+    <div class="post-item-right">
+      <span class="post-date">Jan '25</span>
+      <span class="post-min">6 min</span>
+    </div>
+  </a>
+  <a class="post-item" href="posts/python-decorators.html">
+    <div class="post-item-left">
+      <span class="post-item-title">Python Decorators</span>
+      <span class="post-item-sub">First-class functions, closures, and building custom decorators</span>
+    </div>
+    <div class="post-item-right">
+      <span class="post-date">Mar '24</span>
+      <span class="post-min">7 min</span>
+    </div>
+  </a>
+  <a class="post-item" href="posts/understanding-lora.html">
+    <div class="post-item-left">
+      <span class="post-item-title">Understanding LoRA</span>
+      <span class="post-item-sub">Rank decomposition, frozen weights, why it generalises</span>
+    </div>
+    <div class="post-item-right">
+      <span class="post-date">Apr '24</span>
+      <span class="post-min">8 min</span>
+    </div>
+  </a>
+  <a class="post-item" href="posts/model-souping.html">
+    <div class="post-item-left">
+      <span class="post-item-title">Model Souping</span>
+      <span class="post-item-sub">Weight averaging recipes — uniform, greedy, learned — with PyTorch</span>
+    </div>
+    <div class="post-item-right">
+      <span class="post-date">Jun '24</span>
+      <span class="post-min">8 min</span>
+    </div>
+  </a>
+  <a class="post-item" href="#">
+    <div class="post-item-left">
+      <span class="post-item-title">TransUNet + LoRA across Federated Clients</span>
+      <span class="post-item-sub">Five clients, ISIC dataset, LoRA B-only training</span>
+    </div>
+    <div class="post-item-right">
+      <span class="post-date">Jan '25</span>
+      <span class="post-min">12 min</span>
+    </div>
+  </a>
+  <a class="post-item" href="posts/pytorch-biggraph.html">
+    <div class="post-item-left">
+      <span class="post-item-title">PyTorch BigGraph — Large-Scale Graph Embeddings</span>
+      <span class="post-item-sub">Partitioning, memory-mapped storage, TransE vs RotatE</span>
+    </div>
+    <div class="post-item-right">
+      <span class="post-date">Apr '24</span>
+      <span class="post-min">9 min</span>
+    </div>
+  </a>
+  <a class="post-item" href="posts/weakly-supervised-learning-part1.html">
+    <div class="post-item-left">
+      <span class="post-item-title">Weakly Supervised Learning: Part 1</span>
+      <span class="post-item-sub">Active learning, semi-supervised methods, entropy sampling</span>
+    </div>
+    <div class="post-item-right">
+      <span class="post-date">May '24</span>
+      <span class="post-min">10 min</span>
+    </div>
+  </a>
+  <a class="post-item" href="#">
+    <div class="post-item-left">
+      <span class="post-item-title">Building Solutions</span>
+      <span class="post-item-sub">Notebook to production — the gap nobody talks about honestly</span>
+    </div>
+    <div class="post-item-right">
+      <span class="post-date">May '24</span>
+      <span class="post-min">6 min</span>
+    </div>
+  </a>
+  <a class="post-item" href="#">
+    <div class="post-item-left">
+      <span class="post-item-title">ANN Search — KD-Tree, LSH, HNSW</span>
+      <span class="post-item-sub">When brute-force breaks and what to reach for</span>
+    </div>
+    <div class="post-item-right">
+      <span class="post-date">Feb '24</span>
+      <span class="post-min">10 min</span>
+    </div>
+  </a>
+</ul>
+
+<div id="topics" class="topics-wrap">
+  <div class="section-label" style="margin-bottom:1.4rem;">Topics</div>
+  <div class="topics-grid">
+    <a class="topic-item" href="#">
+      <span class="topic-name">Attention</span>
+      <span class="topic-count">4 posts</span>
+    </a>
+    <a class="topic-item" href="#">
+      <span class="topic-name">LoRA / PEFT</span>
+      <span class="topic-count">6 posts</span>
+    </a>
+    <a class="topic-item" href="#">
+      <span class="topic-name">Federated Learning</span>
+      <span class="topic-count">3 posts</span>
+    </a>
+    <a class="topic-item" href="#">
+      <span class="topic-name">Python & Systems</span>
+      <span class="topic-count">8 posts</span>
+    </a>
+    <a class="topic-item" href="#">
+      <span class="topic-name">Graph ML</span>
+      <span class="topic-count">2 posts</span>
+    </a>
+    <a class="topic-item" href="#">
+      <span class="topic-name">Paper Breakdowns</span>
+      <span class="topic-count">11 posts</span>
+    </a>
+  </div>
+</div>
+
+<div class="now-block">
+  <div class="section-label" style="margin-bottom:1rem;">Now</div>
+  <p>Currently exploring <strong>memory architectures for LLMs</strong> and digging into <strong>world models</strong> - how they form internal representations and what that means for reasoning.</p>
+</div>
+
+<div class="subscribe-row">
+  <input class="sub-input" type="email" placeholder="your@email.com" />
+  <button onclick="handleSubscribe()">subscribe →</button>
+</div>
+
+<footer>
+  <span class="footer-left">© 2026 Shubham Mishra</span>
+  <ul class="footer-links">
+    <li><a href="https://github.com/ShubhamMishra1611">github</a></li>
+    <li><a href="#">twitter</a></li>
+    <li><a href="#">rss</a></li>
+  </ul>
+</footer>
+
+</body>
+</html>
