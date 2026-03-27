@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Forbidden Jutsu of Python Configuration — quanta-log</title>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="../../assets/style.css" />
+
+  <!-- highlight.js v11.9.0 — theme-aware -->
+  <link id="hljs-theme" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
+  <script>hljs.highlightAll();</script>
+
+  <!-- Theme (apply before paint) -->
+  <script src="../../assets/theme.js"></script>
+</head>
+<body class="post-page">
+
+  <nav>
+    <a href="/" class="logo">shubham</a>
+    <ul class="nav-right">
+      <li><a href="../index.html">posts</a></li>
+      <li><a href="/#topics">topics</a></li>
+      <li>
+        <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+          <svg class="theme-icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+          <svg class="theme-icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+      </li>
+    </ul>
+  </nav>
+
+  <div class="post-header">
+    <div style="display:flex; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap;">
+      <span class="tag">python</span>
+      <span class="tag">cpython</span>
+      <span class="tag">internals</span>
+      <span class="tag">c-api</span>
+    </div>
+    <h1>The Forbidden Jutsu of Python Configuration</h1>
+    <div class="post-meta">
+      <span>Apr 15 2025</span>
+      <span>·</span>
+      <span>10 min read</span>
+      <span>·</span>
+      <span>Shubham</span>
+    </div>
+  </div>
+
+  <article>
+
+    <p>In the ancient chronicles of coding, legends tell of a time when raw, unbridled energy surged from the primordial language of C - a force revered as "The Primordial." Recognizing its formidable power, a great sage transformed this potent energy into what we now call CPython. Fueled by the might of C, CPython allows you to channel this energy effortlessly with a simple <code>import</code>.</p>
+
+    <p>While studying CPython Configurations and PyConfig, I stumbled upon how this hidden energy is controlled. It's all about managing CPython's configuration state - arranging variables, setting flags, and shaping the runtime environment to your will. Almost like tuning the flow of an ancient force.</p>
+
+    <p style="color: var(--muted); font-size: 0.9rem;"><strong>Note:</strong> I might just use some fancy "supernatural" words, but that has nothing to do with CPython (or maybe it does). Also the word Forbidden has nothing to do with Python Configuration. (Too much anime...) Anyways</p>
+
+    <h2>Key Elements of Execution</h2>
+
+    <p>Before executing any CPython code, it requires:</p>
+
+    <ul>
+      <li><strong>A module to execute</strong></li>
+      <li><strong>A state to store runtime information</strong> (variables, etc.)</li>
+      <li><strong>A configuration that dictates runtime behavior</strong></li>
+    </ul>
+
+    <!-- ═══ SVG: CPython Initialization Pipeline ═══ -->
+    <figure style="margin: 2.5rem 0;">
+      <svg viewBox="0 0 700 200" xmlns="http://www.w3.org/2000/svg" style="width:100%; max-width:700px; display:block; margin:0 auto;">
+        <text x="350" y="22" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="11">CPython initialization pipeline</text>
+
+        <!-- Step 1: PyPreConfig -->
+        <rect x="10" y="50" width="140" height="70" rx="6" fill="none" stroke="var(--green, #4ade80)" stroke-width="1.5"/>
+        <text x="80" y="75" text-anchor="middle" fill="var(--green, #4ade80)" font-family="Geist Mono, monospace" font-size="11" font-weight="600">PyPreConfig</text>
+        <text x="80" y="93" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">memory allocators</text>
+        <text x="80" y="107" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">locale, UTF-8</text>
+
+        <line x1="150" y1="85" x2="180" y2="85" stroke="var(--border)" stroke-width="1.2" marker-end="url(#arr-fj)"/>
+
+        <!-- Step 2: PyConfig -->
+        <rect x="180" y="50" width="140" height="70" rx="6" fill="none" stroke="var(--green, #4ade80)" stroke-width="1.5"/>
+        <text x="250" y="75" text-anchor="middle" fill="var(--green, #4ade80)" font-family="Geist Mono, monospace" font-size="11" font-weight="600">PyConfig</text>
+        <text x="250" y="93" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">runtime flags</text>
+        <text x="250" y="107" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">exec mode, env vars</text>
+
+        <line x1="320" y1="85" x2="350" y2="85" stroke="var(--border)" stroke-width="1.2" marker-end="url(#arr-fj)"/>
+
+        <!-- Step 3: Py_Initialize -->
+        <rect x="350" y="50" width="150" height="70" rx="6" fill="color-mix(in srgb, var(--green, #4ade80) 8%, transparent)" stroke="var(--green, #4ade80)" stroke-width="1.5"/>
+        <text x="425" y="75" text-anchor="middle" fill="var(--text)" font-family="Geist Mono, monospace" font-size="11" font-weight="600">Py_Initialize</text>
+        <text x="425" y="93" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">interpreter state</text>
+        <text x="425" y="107" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">GC, modules, threads</text>
+
+        <line x1="500" y1="85" x2="530" y2="85" stroke="var(--border)" stroke-width="1.2" marker-end="url(#arr-fj)"/>
+
+        <!-- Step 4: Execute -->
+        <rect x="530" y="50" width="140" height="70" rx="6" fill="none" stroke="var(--border)" stroke-width="1.5"/>
+        <text x="600" y="75" text-anchor="middle" fill="var(--text)" font-family="Geist Mono, monospace" font-size="11" font-weight="600">Execute</text>
+        <text x="600" y="93" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">parse → AST</text>
+        <text x="600" y="107" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">→ bytecode → run</text>
+
+        <!-- Timeline labels -->
+        <text x="80" y="145" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">pre-init</text>
+        <text x="250" y="145" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">configure</text>
+        <text x="425" y="145" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">initialize</text>
+        <text x="600" y="145" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">run</text>
+
+        <!-- Timeline line -->
+        <line x1="40" y1="155" x2="640" y2="155" stroke="var(--border)" stroke-width="1" stroke-dasharray="4,3"/>
+        <circle cx="80" cy="155" r="3" fill="var(--green, #4ade80)"/>
+        <circle cx="250" cy="155" r="3" fill="var(--green, #4ade80)"/>
+        <circle cx="425" cy="155" r="3" fill="var(--green, #4ade80)"/>
+        <circle cx="600" cy="155" r="3" fill="var(--text)"/>
+
+        <defs>
+          <marker id="arr-fj" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse">
+            <polygon points="0 0, 10 3.5, 0 7" fill="var(--border)"/>
+          </marker>
+        </defs>
+      </svg>
+    </figure>
+
+    <h2>1. A Module to Execute</h2>
+
+    <p>A <strong>module</strong> is just a piece of Python code - either a single script (<code>.py</code> file), a package, or built-in Python functionality. When you run:</p>
+
+    <pre><code class="language-bash">python script.py</code></pre>
+
+    <p>or</p>
+
+    <pre><code class="language-bash">python -m http.server 8080</code></pre>
+
+    <p>The Python interpreter loads the module, prepares it for execution by setting up required variables, and executes the module's code. Every Python program is treated as a module when executed, including the <code>__main__</code> module for standalone scripts.</p>
+
+    <p>Python uses <code>__main__</code> to distinguish between scripts run directly (standalone) and modules being imported.</p>
+
+    <h2>2. A State to Hold Information</h2>
+
+    <p>Python manages the storage of variables, functions, and objects while executing code through an execution state. This execution state stores variables (<code>x = 10</code>), function definitions (<code>def greet(): ...</code>), class objects, and imported modules.</p>
+
+    <p><strong>Where is this stored?</strong> Python maintains this execution state in a <strong>global state container</strong> inside CPython, which includes:</p>
+
+    <ul>
+      <li><strong>Global Interpreter State (GIS)</strong> - stores core Python execution settings: memory management, object references, garbage collection, current thread state, loaded modules, and configuration settings like debug mode and optimization flags.</li>
+      <li><strong>Local Execution Contexts</strong> - stores variables specific to a function or block of code.</li>
+      <li><strong>Garbage Collector State</strong> - keeps track of memory allocations.</li>
+    </ul>
+
+    <h2>3. A Runtime Configuration</h2>
+
+    <p>Before executing code, Python needs to configure settings like memory management, encoding settings (UTF-8, locale), and debugging options (verbose or isolated mode). This configuration process is managed using <strong>PEP 587</strong>, which introduced key components: <code>PyPreConfig</code> for pre-initialization settings, and <code>PyConfig</code> for runtime settings.</p>
+
+    <h2>Understanding Python's Configuration Settings</h2>
+
+    <p>PEP 587 introduced a <strong>standardized way</strong> to configure the CPython interpreter.</p>
+
+    <h3>Pre-Initialization Configuration (<code>PyPreConfig</code>)</h3>
+
+    <p>The pre-initialization configuration runs <strong>before</strong> Python starts and is mainly used for:</p>
+
+    <ul>
+      <li>Setting up memory allocators</li>
+      <li>Defining locale and encoding (UTF-8 settings)</li>
+      <li>Choosing isolation mode</li>
+    </ul>
+
+    <p>Key settings include:</p>
+
+    <ul>
+      <li><code>isolated</code> - enable isolated mode. When enabled, <code>sys.path</code> contains neither the script's directory nor the user's site-packages directory.</li>
+      <li><code>legacy_windows_fs_encoding</code> - (Windows only) disable UTF-8 mode and set filesystem encoding to mbcs.</li>
+      <li><code>use_environment</code> - if greater than zero, use environment variables.</li>
+      <li><code>utf8_mode</code> - if nonzero, enable UTF-8 mode.</li>
+      <li><code>dev_mode</code> - if nonzero, enable development mode with extra warnings and debug hooks.</li>
+    </ul>
+
+    <h3>Example: Setting Pre-Initialization Configuration in C</h3>
+
+    <pre><code class="language-c">#include &lt;Python.h&gt;
+
+int main() {
+    PyPreConfig preconfig;
+    PyPreConfig_InitPythonConfig(&amp;preconfig);
+
+    PyStatus status = Py_PreInitialize(&amp;preconfig);
+    if (!handle_py_status(status)) {
+        return 0;
+    }
+
+    preconfig.utf8_mode = 0;  // Disable UTF-8 mode
+
+    Py_Initialize();
+    PyRun_SimpleString("print('Hello from Python with preconfig!')");
+    Py_Finalize();
+    return 0;
+}</code></pre>
+
+    <p>We initialize <code>PyPreConfig</code> to configure settings, enable UTF-8, then start Python with <code>Py_Initialize()</code>.</p>
+
+    <p>Here <code>handle_py_status</code> is a function for checking <code>PyStatus</code> - a structured error handling system in the Python C API:</p>
+
+    <pre><code class="language-c">int handle_py_status(PyStatus status) {
+    if (PyStatus_Exception(status)) {
+        if (status.err_msg != NULL) {
+            fprintf(stderr, "Error: %s\n", status.err_msg);
+        } else {
+            fprintf(stderr, "Unknown Python error occurred\n");
+        }
+        return 0; // Failed
+    }
+    return 1; // Success
+}</code></pre>
+
+    <h3>Runtime Configuration (<code>PyConfig</code>)</h3>
+
+    <p>Once Python starts, <code>PyConfig</code> manages runtime values like runtime flags (debug, optimized), execution mode (script, stdin, or module), extended options (via <code>-X</code>), and environment variables (e.g., <code>PYTHONHOME</code>).</p>
+
+    <pre><code class="language-c">#include &lt;Python.h&gt;
+
+int main() {
+    PyConfig config;
+    PyConfig_InitIsolatedConfig(&amp;config);
+
+    config.isolated = 1;
+    config.use_environment = 0;
+    config.user_site_directory = 0;
+
+    PyStatus status = Py_InitializeFromConfig(&amp;config);
+    if (!handle_py_status(status)) {
+        PyConfig_Clear(&amp;config);
+        return 0;
+    }
+
+    PyRun_SimpleString(
+        "print('Python running with custom runtime settings!')"
+    );
+
+    Py_Finalize();
+    return 0;
+}</code></pre>
+
+    <h3>Compile-Time Configuration</h3>
+
+    <p>Some settings <strong>must be decided at compile-time</strong> when CPython is built from source. Examples:</p>
+
+    <ul>
+      <li><code>sys.maxsize</code> (determined by platform architecture)</li>
+      <li>Debug mode (<code>./configure --with-pydebug</code>)</li>
+      <li>Optional modules (enabling/disabling optimizations)</li>
+    </ul>
+
+    <p>You can check these with:</p>
+
+    <pre><code class="language-bash">python -m sysconfig</code></pre>
+
+    <p>If you install Python from different sources (official, Homebrew, Anaconda), these settings may vary.</p>
+
+    <!-- ═══ SVG: Isolation Layers ═══ -->
+    <figure style="margin: 2.5rem 0;">
+      <svg viewBox="0 0 600 300" xmlns="http://www.w3.org/2000/svg" style="width:100%; max-width:600px; display:block; margin:0 auto;">
+        <text x="300" y="22" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="11">Python configuration layers</text>
+
+        <!-- Outermost: Compile-time -->
+        <rect x="30" y="40" width="540" height="240" rx="10" fill="none" stroke="var(--border)" stroke-width="1.5" stroke-dasharray="6,3"/>
+        <text x="55" y="60" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="10">compile-time (sysconfig)</text>
+
+        <!-- Middle: PyPreConfig -->
+        <rect x="70" y="75" width="460" height="185" rx="8" fill="none" stroke="var(--green, #4ade80)" stroke-width="1.5"/>
+        <text x="95" y="95" fill="var(--green, #4ade80)" font-family="Geist Mono, monospace" font-size="10" font-weight="600">PyPreConfig</text>
+
+        <!-- Labels for preconfig -->
+        <text x="95" y="115" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">· memory allocators</text>
+        <text x="95" y="130" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">· locale / UTF-8</text>
+        <text x="95" y="145" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">· isolated mode</text>
+
+        <!-- Inner: PyConfig -->
+        <rect x="290" y="90" width="220" height="155" rx="6" fill="color-mix(in srgb, var(--green, #4ade80) 6%, transparent)" stroke="var(--green, #4ade80)" stroke-width="1.2"/>
+        <text x="310" y="112" fill="var(--green, #4ade80)" font-family="Geist Mono, monospace" font-size="10" font-weight="600">PyConfig</text>
+
+        <text x="310" y="135" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">· runtime flags</text>
+        <text x="310" y="150" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">· exec mode</text>
+        <text x="310" y="165" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">· env vars</text>
+        <text x="310" y="180" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">· sys.path</text>
+        <text x="310" y="195" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">· site_import</text>
+        <text x="310" y="210" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">· debug / optimize</text>
+
+        <!-- Arrow showing order -->
+        <text x="160" y="240" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">runs first →</text>
+        <text x="400" y="240" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">runs second →</text>
+      </svg>
+    </figure>
+
+    <h2>The Isolation Experiment</h2>
+
+    <p>Let's isolate libraries from Python. A simple way is to use a virtual environment or the <code>-I</code> flag. But we can do the same by setting <code>PyPreConfig</code> and <code>PyConfig</code> directly.</p>
+
+    <p>Here's the test script we want to run inside our isolated environment:</p>
+
+    <pre><code class="language-python">import sys
+print(f'sys.flags.isolated = {sys.flags.isolated}')
+print(f'sys.flags.no_user_site = {sys.flags.no_user_site}')
+print(f'"site" in sys.modules = {"site" in sys.modules}')
+
+imports_to_test = ['numpy', 'os', 'sys', 'builtins', 'site']
+for pkg in imports_to_test:
+    try:
+        __import__(pkg)
+        print(f'Can import {pkg}: YES')
+    except ImportError:
+        print(f'Can import {pkg}: NO')</code></pre>
+
+    <p>And here's the C program that runs it in full isolation:</p>
+
+    <pre><code class="language-c">#include &lt;Python.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+
+int test_full_isolation(void) {
+    // Pre-initialize with isolated configuration
+    PyPreConfig preconfig;
+    PyPreConfig_InitIsolatedConfig(&amp;preconfig);
+    preconfig.isolated = 1;
+    preconfig.use_environment = 0;
+
+    PyStatus status = Py_PreInitialize(&amp;preconfig);
+    if (!handle_py_status(status)) return 0;
+
+    // Use isolated config with explicit site_import=0
+    PyConfig config;
+    PyConfig_InitIsolatedConfig(&amp;config);
+    config.isolated = 1;
+    config.use_environment = 0;
+    config.user_site_directory = 0;
+    config.site_import = 0;
+
+    status = Py_InitializeFromConfig(&amp;config);
+    if (!handle_py_status(status)) {
+        PyConfig_Clear(&amp;config);
+        return 0;
+    }
+
+    PyRun_SimpleString(
+        "import sys\n"
+        "print(f'sys.flags.isolated = {sys.flags.isolated}')\n"
+        "print(f'\"site\" in sys.modules = "
+            "{\"site\" in sys.modules}')\n"
+        "\n"
+        "for pkg in ['numpy', 'os', 'sys', 'builtins', 'site']:\n"
+        "    try:\n"
+        "        __import__(pkg)\n"
+        "        print(f'Can import {pkg}: YES')\n"
+        "    except ImportError:\n"
+        "        print(f'Can import {pkg}: NO')\n"
+    );
+
+    PyConfig_Clear(&amp;config);
+    Py_Finalize();
+    return 1;
+}</code></pre>
+
+    <p>The result: <strong>numpy cannot be imported</strong> in isolation. Standard library modules (<code>os</code>, <code>sys</code>, <code>builtins</code>) still work because they're built into CPython itself.</p>
+
+    <h2>Ways to Execute Python Code</h2>
+
+    <p>CPython allows Python code execution through multiple approaches:</p>
+
+    <ul>
+      <li><strong>Command line</strong> - <code>python -c "print('Hola Amigo')"</code></li>
+      <li><strong>Module execution</strong> - <code>python -m unittest test_script.py</code></li>
+      <li><strong>Piping input</strong> - <code>echo "print('hehe')" | python</code> (no <code>-c</code> flag needed)</li>
+      <li><strong>REPL</strong> - just type <code>python</code> and enter the Read-Eval-Print Loop</li>
+      <li><strong>Embedding in C</strong> - using <code>Python.h</code> and the CPython C API</li>
+      <li><strong>Script file</strong> - <code>python script.py</code></li>
+    </ul>
+
+    <p><strong>Note on compiling C with embedded Python:</strong></p>
+
+    <pre><code class="language-bash">gcc embed_python.c -o embed_python.exe \
+    -I"&lt;PathToPython&gt;/Python312/include" \
+    -L"&lt;PathToPython&gt;/Python312/libs" \
+    -lpython312</code></pre>
+
+    <h2>From Input to Executable Code</h2>
+
+    <p>Before Python executes any code, it must <strong>convert input into a module</strong>. CPython follows a multi-step process:</p>
+
+    <ol>
+      <li><strong>Read input</strong> (file, string, stdin, module, or bytecode)</li>
+      <li><strong>Pass it to the parser</strong> (converts it into an AST)</li>
+      <li><strong>Compile it into bytecode</strong></li>
+      <li><strong>Execute the module within the <code>__main__</code> namespace</strong></li>
+    </ol>
+
+    <!-- ═══ SVG: Input-to-Execution Flow ═══ -->
+    <figure style="margin: 2.5rem 0;">
+      <svg viewBox="0 0 700 320" xmlns="http://www.w3.org/2000/svg" style="width:100%; max-width:700px; display:block; margin:0 auto;">
+        <text x="350" y="22" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="11">four paths to execution</text>
+
+        <!-- Input boxes (left column) -->
+        <rect x="10" y="50" width="155" height="42" rx="5" fill="none" stroke="var(--green, #4ade80)" stroke-width="1.2"/>
+        <text x="87" y="67" text-anchor="middle" fill="var(--green, #4ade80)" font-family="Geist Mono, monospace" font-size="10" font-weight="600">-c flag</text>
+        <text x="87" y="82" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">pymain_run_command()</text>
+
+        <rect x="10" y="102" width="155" height="42" rx="5" fill="none" stroke="var(--green, #4ade80)" stroke-width="1.2"/>
+        <text x="87" y="119" text-anchor="middle" fill="var(--green, #4ade80)" font-family="Geist Mono, monospace" font-size="10" font-weight="600">-m module</text>
+        <text x="87" y="134" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">Lib/runpy.py</text>
+
+        <rect x="10" y="154" width="155" height="42" rx="5" fill="none" stroke="var(--green, #4ade80)" stroke-width="1.2"/>
+        <text x="87" y="171" text-anchor="middle" fill="var(--green, #4ade80)" font-family="Geist Mono, monospace" font-size="10" font-weight="600">.py file</text>
+        <text x="87" y="186" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">PyRun_SimpleFileExFlags()</text>
+
+        <rect x="10" y="206" width="155" height="42" rx="5" fill="none" stroke="var(--green, #4ade80)" stroke-width="1.2"/>
+        <text x="87" y="223" text-anchor="middle" fill="var(--green, #4ade80)" font-family="Geist Mono, monospace" font-size="10" font-weight="600">.pyc bytecode</text>
+        <text x="87" y="238" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">run_pyc_file()</text>
+
+        <!-- Convergence arrows -->
+        <line x1="165" y1="71" x2="240" y2="145" stroke="var(--border)" stroke-width="1" marker-end="url(#arr-fj)"/>
+        <line x1="165" y1="123" x2="240" y2="145" stroke="var(--border)" stroke-width="1" marker-end="url(#arr-fj)"/>
+        <line x1="165" y1="175" x2="240" y2="155" stroke="var(--border)" stroke-width="1" marker-end="url(#arr-fj)"/>
+        <line x1="165" y1="227" x2="240" y2="165" stroke="var(--border)" stroke-width="1" marker-end="url(#arr-fj)"/>
+
+        <!-- Middle: __main__ module -->
+        <rect x="240" y="130" width="120" height="45" rx="6" fill="color-mix(in srgb, var(--green, #4ade80) 10%, transparent)" stroke="var(--green, #4ade80)" stroke-width="1.5"/>
+        <text x="300" y="150" text-anchor="middle" fill="var(--text)" font-family="Geist Mono, monospace" font-size="10" font-weight="600">__main__</text>
+        <text x="300" y="165" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">module created</text>
+
+        <line x1="360" y1="152" x2="400" y2="152" stroke="var(--border)" stroke-width="1.2" marker-end="url(#arr-fj)"/>
+
+        <!-- Parser / AST -->
+        <rect x="400" y="130" width="90" height="45" rx="6" fill="none" stroke="var(--border)" stroke-width="1.2"/>
+        <text x="445" y="150" text-anchor="middle" fill="var(--text)" font-family="Geist Mono, monospace" font-size="10" font-weight="600">Parser</text>
+        <text x="445" y="165" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">→ AST</text>
+
+        <line x1="490" y1="152" x2="520" y2="152" stroke="var(--border)" stroke-width="1.2" marker-end="url(#arr-fj)"/>
+
+        <!-- Compiler -->
+        <rect x="520" y="130" width="90" height="45" rx="6" fill="none" stroke="var(--border)" stroke-width="1.2"/>
+        <text x="565" y="150" text-anchor="middle" fill="var(--text)" font-family="Geist Mono, monospace" font-size="10" font-weight="600">Compile</text>
+        <text x="565" y="165" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">→ bytecode</text>
+
+        <line x1="565" y1="175" x2="565" y2="210" stroke="var(--border)" stroke-width="1.2" marker-end="url(#arr-fj)"/>
+
+        <!-- Execute -->
+        <rect x="505" y="210" width="120" height="45" rx="6" fill="color-mix(in srgb, var(--green, #4ade80) 8%, transparent)" stroke="var(--green, #4ade80)" stroke-width="1.5"/>
+        <text x="565" y="230" text-anchor="middle" fill="var(--green, #4ade80)" font-family="Geist Mono, monospace" font-size="10" font-weight="700">Execute</text>
+        <text x="565" y="245" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">ceval.c loop</text>
+
+        <!-- .pyc shortcut arrow (skip parse) -->
+        <path d="M165,227 Q350,290 505,235" fill="none" stroke="var(--green, #4ade80)" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arr-fj)"/>
+        <text x="340" y="280" text-anchor="middle" fill="var(--green, #4ade80)" font-family="Geist Mono, monospace" font-size="8">.pyc skips parsing</text>
+      </svg>
+      <figcaption style="text-align:center; color:var(--muted); font-size:0.8rem; margin-top:0.5rem;">All input paths converge into a __main__ module. Precompiled .pyc files skip the parse and compile steps entirely.</figcaption>
+    </figure>
+
+    <h3>A. Input String from Command Line (<code>-c</code> flag)</h3>
+
+    <pre><code class="language-bash">python -c "print(2 ** 2)"</code></pre>
+
+    <p>The command is passed to <code>pymain_run_command()</code> inside <code>Modules/main.c</code>, converted into a Python bytes object using <code>PyUnicode_FromWideChar()</code>, then passed to <code>PyRun_SimpleStringFlags()</code> which implicitly creates a <code>__main__</code> entry point and calls <code>PyRun_StringFlags()</code> to generate an AST from the string.</p>
+
+    <h3>B. Input with a Local Module (<code>-m</code> flag)</h3>
+
+    <pre><code class="language-bash">python -m unittest</code></pre>
+
+    <p>Python finds the module inside <code>sys.path</code>, sets <code>__name__ = "__main__"</code> to indicate standalone execution, and executes the module inside <code>Lib/runpy.py</code>. Executing <code>python -m &lt;module&gt;</code> and <code>python -m runpy &lt;module&gt;</code> are equivalent.</p>
+
+    <h3>C. Input from a Python Script (<code>.py</code> file)</h3>
+
+    <pre><code class="language-bash">python script.py</code></pre>
+
+    <p>The file is opened and read into memory. <code>PyRun_SimpleFileExFlags()</code> parses and compiles it, creating a <code>__main__</code> module. The script is then executed in the global namespace. This same function also handles <code>.pyc</code> files and stdin when you pipe input.</p>
+
+    <h3>D. Input from Precompiled Bytecode (<code>.pyc</code> files)</h3>
+
+    <pre><code class="language-bash">python compiled_script.pyc</code></pre>
+
+    <p>Instead of parsing source code, CPython <strong>directly loads the precompiled bytecode</strong>. <code>PyRun_SimpleFileExFlags()</code> detects the <code>.pyc</code> file and calls <code>run_pyc_file()</code>, which deserializes the file into a code object and executes it.</p>
+
+    <p>While writing this article and running these scripts, I learned a lot, and I hope there is something new for someone reading this.</p>
+
+  </article>
+
+  <div class="post-nav">
+    <a href="../index.html">← all posts</a>
+    <a href="python-decorators.html">Python Decorators →</a>
+  </div>
+
+</body>
+</html>
