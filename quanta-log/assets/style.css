@@ -643,6 +643,62 @@ footer {
 /* KaTeX display math centering */
 .katex-display { margin: 1.5rem 0; overflow-x: auto; }
 
+/* ════════════════════════════════════════════════════════════
+   PERSONAL WORLD — Moss & Stone theme (body.personal)
+   ════════════════════════════════════════════════════════════ */
+body.personal,
+body.personal[data-theme="dark"] {
+  --bg:       #0f110e;
+  --surface:  #161814;
+  --border:   #222018;
+  --text:     #c8c0a8;
+  --muted:    #5a5840;
+  --subtle:   #a8a090;
+  --green:    #8a9a62;
+  --hover-bg: #141612;
+  --tag-bg:   #181a14;
+  --tag-text: #8a9a62;
+  --code-bg:  #131510;
+}
+
+body.personal[data-theme="light"] {
+  --bg:       #f6f5f0;
+  --surface:  #eeedea;
+  --border:   #d4d0c0;
+  --text:     #2a2818;
+  --muted:    #7a7860;
+  --subtle:   #3a3828;
+  --green:    #4a6030;
+  --hover-bg: #eae8dc;
+  --tag-bg:   #e8e5d8;
+  --tag-text: #4a6030;
+  --code-bg:  #eceadf;
+}
+
+/* moss accent for personal links */
+body.personal a:hover { color: var(--green); }
+body.personal .logo { color: var(--green); opacity: 1; }
+body.personal .nav-right a:hover { color: var(--green); }
+body.personal .post-page .post-nav a:hover { color: var(--green); }
+body.personal .new-badge {
+  color: var(--green);
+  background: color-mix(in srgb, var(--green) 12%, transparent);
+  border-color: color-mix(in srgb, var(--green) 25%, transparent);
+}
+
+/* earthy blockquote accent */
+body.personal .post-page article blockquote {
+  border-left-color: #5a6a38;
+}
+
+/* strong text in personal posts gets moss highlight */
+body.personal .post-page article strong {
+  color: #a0b870;
+}
+body.personal[data-theme="light"] .post-page article strong {
+  color: #3a5020;
+}
+
 /* ── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 600px) {
   body { padding: 0 1rem; }

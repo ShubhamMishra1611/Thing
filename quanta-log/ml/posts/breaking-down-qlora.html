@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Breaking Down QLoRA — quanta-log</title>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="../../assets/style.css" />
+
+  <!-- KaTeX v0.16.9 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+    onload="renderMathInElement(document.body, {
+      delimiters: [
+        {left: '$$', right: '$$', display: true},
+        {left: '$', right: '$', display: false}
+      ]
+    });"></script>
+
+  <!-- Theme (apply before paint) -->
+  <script src="../../assets/theme.js"></script>
+</head>
+<body class="post-page">
+
+  <nav>
+    <a href="/" class="logo">shubham</a>
+    <ul class="nav-right">
+      <li><a href="../index.html">posts</a></li>
+      <li><a href="/#topics">topics</a></li>
+      <li>
+        <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+          <span class="theme-icon">◐</span>
+        </button>
+      </li>
+    </ul>
+  </nav>
+
+  <div class="post-header">
+    <div style="display:flex; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap;">
+      <span class="tag">quantization</span>
+      <span class="tag">fine-tuning</span>
+      <span class="tag">qlora</span>
+      <span class="tag">paper</span>
+    </div>
+    <h1>Breaking Down the "Things" Behind QLoRA</h1>
+    <div class="post-meta">
+      <span>Jan 9 2025</span>
+      <span>7 min read</span>
+      <span>Shubham Mishra</span>
+    </div>
+  </div>
+
+  <article>
+
+    <p>The fine-tuning of large language models like GPT-4 or LLaMA can be a resource-heavy challenge. QLoRA emerges as a beacon of efficiency, utilizing smart techniques to make fine-tuning of <strong>quantized models</strong> possible on consumer-grade GPUs, without compromising performance. Three standout innovations make this happen:</p>
+
+    <p style="color: var(--muted); font-size: 0.85rem;">
+      If you haven't read the LoRA post yet, <a href="understanding-lora.html">start there</a> - QLoRA builds directly on top of it.
+    </p>
+
+    <!-- ═══ SVG: QLoRA Overview Pipeline ═══ -->
+    <figure style="margin: 2.5rem 0;">
+      <svg viewBox="0 0 720 180" xmlns="http://www.w3.org/2000/svg" style="width:100%; max-width:720px; display:block; margin:0 auto;">
+        <!-- Boxes -->
+        <rect x="10" y="50" width="160" height="80" rx="8" fill="none" stroke="var(--green, #5a9)" stroke-width="1.5"/>
+        <text x="90" y="82" text-anchor="middle" fill="var(--text)" font-family="Geist Mono, monospace" font-size="12" font-weight="600">NF4</text>
+        <text x="90" y="100" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="10">4-bit quantization</text>
+        <text x="90" y="116" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="10">of weights</text>
+
+        <rect x="220" y="50" width="160" height="80" rx="8" fill="none" stroke="var(--green, #5a9)" stroke-width="1.5"/>
+        <text x="300" y="82" text-anchor="middle" fill="var(--text)" font-family="Geist Mono, monospace" font-size="12" font-weight="600">Double Quant</text>
+        <text x="300" y="100" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="10">quantize the</text>
+        <text x="300" y="116" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="10">quantization constants</text>
+
+        <rect x="430" y="50" width="160" height="80" rx="8" fill="none" stroke="var(--green, #5a9)" stroke-width="1.5"/>
+        <text x="510" y="82" text-anchor="middle" fill="var(--text)" font-family="Geist Mono, monospace" font-size="12" font-weight="600">Paged Optim</text>
+        <text x="510" y="100" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="10">GPU↔CPU memory</text>
+        <text x="510" y="116" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="10">paging</text>
+
+        <!-- Result box -->
+        <rect x="600" y="50" width="110" height="80" rx="8" fill="color-mix(in srgb, var(--green, #5a9) 10%, transparent)" stroke="var(--green, #5a9)" stroke-width="1.5"/>
+        <text x="655" y="85" text-anchor="middle" fill="var(--green, #5a9)" font-family="Geist Mono, monospace" font-size="12" font-weight="700">QLoRA</text>
+        <text x="655" y="103" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">65B on 1 GPU</text>
+
+        <!-- Arrows -->
+        <line x1="170" y1="90" x2="220" y2="90" stroke="var(--border)" stroke-width="1.2" marker-end="url(#arrow-q)"/>
+        <line x1="380" y1="90" x2="430" y2="90" stroke="var(--border)" stroke-width="1.2" marker-end="url(#arrow-q)"/>
+        <line x1="590" y1="90" x2="600" y2="90" stroke="var(--border)" stroke-width="1.2" marker-end="url(#arrow-q)"/>
+
+        <defs>
+          <marker id="arrow-q" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse">
+            <polygon points="0 0, 10 3.5, 0 7" fill="var(--border)"/>
+          </marker>
+        </defs>
+
+        <!-- Title -->
+        <text x="360" y="25" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="11">the three innovations of QLoRA</text>
+      </svg>
+    </figure>
+
+    <!-- ═══ SECTION 1: NF4 ═══ -->
+    <h2>1. 4-bit Normal Float (NF4) Quantization</h2>
+
+    <p>Quantization is the process of converting the continuous weights of a neural network into a smaller set of discrete values, reducing memory consumption. But what makes <strong>NormalFloat (NF4)</strong> special?</p>
+
+    <h3>Quantile quantization: the foundation</h3>
+
+    <p>Quantile quantization ensures each bin contains an equal number of values from the input tensor. It breaks down the range of neural network weights in a balanced manner.</p>
+
+    <p>The system estimates quantiles from the input weights using the empirical cumulative distribution function. This tries to capture key statistical properties of the data but comes with a catch - it's computationally expensive and prone to errors, especially for outlier values.</p>
+
+    <h3>NormalFloat: the smarter alternative</h3>
+
+    <p>Recognizing the limitations of quantile quantization, QLoRA introduces <strong>NF4 quantization</strong>, which avoids expensive quantile estimates:</p>
+
+    <ul>
+      <li><strong>Fixed distribution assumption</strong> - neural network weights tend to follow a zero-centered normal distribution. By scaling weights to fit $\mathcal{N}(0,1)$, NF4 provides a more efficient use of the 4-bit range.</li>
+      <li><strong>Data range</strong> - weights are transformed into a fixed range of $[-1, 1]$, ensuring more predictable quantization and minimizing approximation errors for weights that deviate from the mean.</li>
+    </ul>
+
+    <!-- ═══ SVG: NF4 Normal Distribution ═══ -->
+    <figure style="margin: 2.5rem 0;">
+      <svg viewBox="0 0 600 260" xmlns="http://www.w3.org/2000/svg" style="width:100%; max-width:600px; display:block; margin:0 auto;">
+        <text x="300" y="20" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="11">NF4: mapping normal distribution to 4-bit bins</text>
+
+        <!-- Axis -->
+        <line x1="60" y1="200" x2="540" y2="200" stroke="var(--border)" stroke-width="1"/>
+        <line x1="60" y1="200" x2="60" y2="40" stroke="var(--border)" stroke-width="1"/>
+
+        <!-- Axis labels -->
+        <text x="60" y="220" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">-1</text>
+        <text x="300" y="220" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">0</text>
+        <text x="540" y="220" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">+1</text>
+
+        <!-- Normal distribution curve (bell) -->
+        <path d="M60,198 Q100,195 140,185 Q180,165 220,130 Q260,75 300,50 Q340,75 380,130 Q420,165 460,185 Q500,195 540,198" fill="none" stroke="var(--green, #5a9)" stroke-width="2"/>
+
+        <!-- Fill under curve -->
+        <path d="M60,198 Q100,195 140,185 Q180,165 220,130 Q260,75 300,50 Q340,75 380,130 Q420,165 460,185 Q500,195 540,198 Z" fill="color-mix(in srgb, var(--green, #5a9) 8%, transparent)"/>
+
+        <!-- Quantization bin lines (16 bins for 4-bit) -->
+        <line x1="90" y1="200" x2="90" y2="196" stroke="var(--muted)" stroke-width="1" opacity="0.5"/>
+        <line x1="120" y1="200" x2="120" y2="192" stroke="var(--muted)" stroke-width="1" opacity="0.5"/>
+        <line x1="150" y1="200" x2="150" y2="183" stroke="var(--muted)" stroke-width="1" opacity="0.5"/>
+        <line x1="180" y1="200" x2="180" y2="168" stroke="var(--muted)" stroke-width="1" opacity="0.5"/>
+        <line x1="210" y1="200" x2="210" y2="140" stroke="var(--muted)" stroke-width="1" opacity="0.5"/>
+        <line x1="240" y1="200" x2="240" y2="100" stroke="var(--muted)" stroke-width="1" opacity="0.5"/>
+        <line x1="270" y1="200" x2="270" y2="68" stroke="var(--muted)" stroke-width="1" opacity="0.5"/>
+        <line x1="300" y1="200" x2="300" y2="50" stroke="var(--green, #5a9)" stroke-width="1" opacity="0.4" stroke-dasharray="4,3"/>
+        <line x1="330" y1="200" x2="330" y2="68" stroke="var(--muted)" stroke-width="1" opacity="0.5"/>
+        <line x1="360" y1="200" x2="360" y2="100" stroke="var(--muted)" stroke-width="1" opacity="0.5"/>
+        <line x1="390" y1="200" x2="390" y2="140" stroke="var(--muted)" stroke-width="1" opacity="0.5"/>
+        <line x1="420" y1="200" x2="420" y2="168" stroke="var(--muted)" stroke-width="1" opacity="0.5"/>
+        <line x1="450" y1="200" x2="450" y2="183" stroke="var(--muted)" stroke-width="1" opacity="0.5"/>
+        <line x1="480" y1="200" x2="480" y2="192" stroke="var(--muted)" stroke-width="1" opacity="0.5"/>
+        <line x1="510" y1="200" x2="510" y2="196" stroke="var(--muted)" stroke-width="1" opacity="0.5"/>
+
+        <!-- Annotations -->
+        <text x="200" y="248" text-anchor="middle" fill="var(--green, #5a9)" font-family="Geist Mono, monospace" font-size="9">denser bins near center</text>
+        <text x="440" y="248" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">sparser bins at tails</text>
+
+        <!-- Small arrows pointing to dense/sparse -->
+        <path d="M200,238 L200,206" stroke="var(--green, #5a9)" stroke-width="0.8" fill="none" marker-end="url(#arrow-q)"/>
+        <path d="M440,238 L490,206" stroke="var(--muted)" stroke-width="0.8" fill="none" marker-end="url(#arrow-q)"/>
+      </svg>
+      <figcaption style="text-align:center; color:var(--muted); font-size:0.8rem; margin-top:0.5rem;">Bins are not uniformly spaced - more values cluster near zero in a normal distribution, so NF4 allocates more bins there.</figcaption>
+    </figure>
+
+    <h3>Creating the NormalFloat data type</h3>
+
+    <p>The process for creating NF4 is carefully designed to preserve the normal distribution of the weights:</p>
+
+    <ol>
+      <li><strong>Quantile estimation</strong> - estimate the quantiles of a standard normal distribution $\mathcal{N}(0,1)$.</li>
+      <li><strong>Normalization</strong> - the estimated quantiles are scaled to the $[-1, 1]$ range, matching the range of the input weights.</li>
+      <li><strong>Weight transformation</strong> - weights from the neural network are normalized to $[-1, 1]$ and mapped onto the corresponding quantized value using <strong>absolute maximum rescaling</strong>.</li>
+    </ol>
+
+    <h3>Handling zero and asymmetric adjustment</h3>
+
+    <p>Neural networks often have many weights close to zero, which requires careful treatment:</p>
+
+    <ul>
+      <li><strong>Asymmetric adjustment</strong> - separate quantile sets are created for positive and negative ranges to ensure precise representation of zero.</li>
+      <li><strong>Unification</strong> - after quantization, these two sets are combined into a single quantized representation, eliminating the need for multiple zero representations.</li>
+    </ul>
+
+    <p><strong>NormalFloat (NF4)</strong> becomes an <strong>information-theoretically optimal data type</strong>. It preserves as much information as possible while using fewer bits.</p>
+
+    <!-- ═══ SECTION 2: Double Quantization ═══ -->
+    <h2>2. Double Quantization: Compressing the Compressors</h2>
+
+    <p>Quantization saves memory by representing large values with fewer bits, but even quantization has overhead. This overhead comes in the form of <strong>quantization constants</strong>, which need their own storage. QLoRA's <strong>Double Quantization (DQ)</strong> addresses this by cleverly quantizing the quantizers themselves.</p>
+
+    <h3>The quantization dilemma</h3>
+
+    <p>When quantizing neural network weights, small block sizes are necessary for precision. But this introduces memory overhead because each block requires its own quantization constants:</p>
+
+    <p>For a block size of 64 weights, 32-bit constants add about <strong>0.5 bits per parameter</strong> to the memory cost.</p>
+
+    <!-- ═══ SVG: Double Quantization Pipeline ═══ -->
+    <figure style="margin: 2.5rem 0;">
+      <svg viewBox="0 0 650 280" xmlns="http://www.w3.org/2000/svg" style="width:100%; max-width:650px; display:block; margin:0 auto;">
+        <text x="325" y="20" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="11">double quantization pipeline</text>
+
+        <!-- Row 1: First quantization -->
+        <rect x="20" y="45" width="130" height="55" rx="6" fill="none" stroke="var(--border)" stroke-width="1.2"/>
+        <text x="85" y="68" text-anchor="middle" fill="var(--text)" font-family="Geist Mono, monospace" font-size="11">Weights</text>
+        <text x="85" y="85" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">FP16/FP32</text>
+
+        <line x1="150" y1="72" x2="190" y2="72" stroke="var(--border)" stroke-width="1.2" marker-end="url(#arrow-q)"/>
+
+        <rect x="190" y="45" width="150" height="55" rx="6" fill="none" stroke="var(--green, #5a9)" stroke-width="1.5"/>
+        <text x="265" y="68" text-anchor="middle" fill="var(--green, #5a9)" font-family="Geist Mono, monospace" font-size="11">1st Quantize</text>
+        <text x="265" y="85" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">NF4 (4-bit)</text>
+
+        <!-- Output: quantized weights + constants -->
+        <line x1="340" y1="55" x2="400" y2="55" stroke="var(--border)" stroke-width="1.2" marker-end="url(#arrow-q)"/>
+        <line x1="340" y1="85" x2="400" y2="85" stroke="var(--border)" stroke-width="1.2" marker-end="url(#arrow-q)"/>
+
+        <rect x="400" y="35" width="140" height="35" rx="5" fill="color-mix(in srgb, var(--green, #5a9) 8%, transparent)" stroke="var(--green, #5a9)" stroke-width="1"/>
+        <text x="470" y="57" text-anchor="middle" fill="var(--text)" font-family="Geist Mono, monospace" font-size="10">4-bit weights ✓</text>
+
+        <rect x="400" y="75" width="140" height="35" rx="5" fill="none" stroke="var(--border)" stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="470" y="97" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="10">constants FP32</text>
+
+        <!-- Arrow down from constants -->
+        <line x1="470" y1="110" x2="470" y2="150" stroke="var(--border)" stroke-width="1.2" marker-end="url(#arrow-q)"/>
+        <text x="490" y="135" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">still big!</text>
+
+        <!-- Row 2: Second quantization -->
+        <rect x="390" y="150" width="160" height="55" rx="6" fill="none" stroke="var(--green, #5a9)" stroke-width="1.5"/>
+        <text x="470" y="173" text-anchor="middle" fill="var(--green, #5a9)" font-family="Geist Mono, monospace" font-size="11">2nd Quantize</text>
+        <text x="470" y="190" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">FP32 → FP8</text>
+
+        <line x1="470" y1="205" x2="470" y2="240" stroke="var(--border)" stroke-width="1.2" marker-end="url(#arrow-q)"/>
+
+        <rect x="390" y="240" width="160" height="35" rx="5" fill="color-mix(in srgb, var(--green, #5a9) 8%, transparent)" stroke="var(--green, #5a9)" stroke-width="1"/>
+        <text x="470" y="262" text-anchor="middle" fill="var(--green, #5a9)" font-family="Geist Mono, monospace" font-size="10">constants FP8 ✓</text>
+
+        <!-- Memory savings callout -->
+        <rect x="30" y="160" width="280" height="80" rx="8" fill="color-mix(in srgb, var(--green, #5a9) 5%, transparent)" stroke="var(--border)" stroke-width="1"/>
+        <text x="170" y="185" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="10">memory per parameter:</text>
+        <text x="110" y="205" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="10">before:</text>
+        <text x="210" y="205" text-anchor="middle" fill="var(--text)" font-family="Geist Mono, monospace" font-size="10" text-decoration="line-through">0.5 bits</text>
+        <text x="110" y="225" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="10">after:</text>
+        <text x="210" y="225" text-anchor="middle" fill="var(--green, #5a9)" font-family="Geist Mono, monospace" font-size="11" font-weight="600">0.127 bits</text>
+      </svg>
+      <figcaption style="text-align:center; color:var(--muted); font-size:0.8rem; margin-top:0.5rem;">74.6% reduction in quantization constant overhead.</figcaption>
+    </figure>
+
+    <h3>Quantize the quantizers</h3>
+
+    <p>The core idea behind <strong>Double Quantization</strong> is to further compress these quantization constants:</p>
+
+    <ul>
+      <li><strong>First Quantization</strong> - weights are initially quantized, producing <strong>32-bit quantization constants</strong> ($c_2^{FP32}$).</li>
+      <li><strong>Second Quantization</strong> - these 32-bit constants are then quantized into <strong>8-bit floating point values</strong> ($c_2^{FP8}$), further reducing their memory footprint.</li>
+    </ul>
+
+    <h3>Optimizing the constants</h3>
+
+    <p>Before quantizing the constants, their mean is subtracted, centering the values around zero. This allows for <strong>symmetric quantization</strong>, which is more efficient.</p>
+
+    <h3>Memory savings</h3>
+
+    <p>With <strong>Double Quantization</strong>, the memory footprint of quantization constants drops from <strong>0.5 bits per parameter</strong> to just <strong>0.127 bits per parameter</strong> - a <strong>74.6% reduction</strong>. Significant savings while the model's performance isn't degraded.</p>
+
+    <!-- ═══ SECTION 3: Paged Optimizers ═══ -->
+    <h2>3. Paged Optimizers: Managing Memory Like a Pro</h2>
+
+    <p>Imagine trying to complete a giant puzzle but your table isn't big enough to hold all the pieces at once. <strong>Paged Optimizers</strong> act like a helper who brings pieces to the table from nearby storage (CPU memory) when needed, and removes pieces you're not currently using.</p>
+
+    <!-- ═══ SVG: Paged Optimizers ═══ -->
+    <figure style="margin: 2.5rem 0;">
+      <svg viewBox="0 0 600 220" xmlns="http://www.w3.org/2000/svg" style="width:100%; max-width:600px; display:block; margin:0 auto;">
+        <text x="300" y="20" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="11">paged optimizers: GPU ↔ CPU memory transfer</text>
+
+        <!-- GPU box -->
+        <rect x="30" y="50" width="220" height="140" rx="8" fill="color-mix(in srgb, var(--green, #5a9) 6%, transparent)" stroke="var(--green, #5a9)" stroke-width="1.5"/>
+        <text x="140" y="72" text-anchor="middle" fill="var(--green, #5a9)" font-family="Geist Mono, monospace" font-size="12" font-weight="600">GPU Memory</text>
+
+        <!-- Pages in GPU -->
+        <rect x="50" y="85" width="40" height="30" rx="3" fill="color-mix(in srgb, var(--green, #5a9) 20%, transparent)" stroke="var(--green, #5a9)" stroke-width="1"/>
+        <text x="70" y="105" text-anchor="middle" fill="var(--text)" font-family="Geist Mono, monospace" font-size="8">4KB</text>
+
+        <rect x="100" y="85" width="40" height="30" rx="3" fill="color-mix(in srgb, var(--green, #5a9) 20%, transparent)" stroke="var(--green, #5a9)" stroke-width="1"/>
+        <text x="120" y="105" text-anchor="middle" fill="var(--text)" font-family="Geist Mono, monospace" font-size="8">4KB</text>
+
+        <rect x="150" y="85" width="40" height="30" rx="3" fill="color-mix(in srgb, var(--green, #5a9) 20%, transparent)" stroke="var(--green, #5a9)" stroke-width="1"/>
+        <text x="170" y="105" text-anchor="middle" fill="var(--text)" font-family="Geist Mono, monospace" font-size="8">4KB</text>
+
+        <rect x="200" y="85" width="40" height="30" rx="3" fill="none" stroke="var(--border)" stroke-width="1" stroke-dasharray="3,2"/>
+        <text x="220" y="105" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">free</text>
+
+        <!-- Active training label -->
+        <text x="140" y="145" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">active optimizer states</text>
+        <text x="140" y="160" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">+ gradients</text>
+
+        <!-- CPU box -->
+        <rect x="350" y="50" width="220" height="140" rx="8" fill="none" stroke="var(--border)" stroke-width="1.5"/>
+        <text x="460" y="72" text-anchor="middle" fill="var(--text)" font-family="Geist Mono, monospace" font-size="12" font-weight="600">CPU Memory</text>
+
+        <!-- Pages in CPU -->
+        <rect x="370" y="85" width="40" height="30" rx="3" fill="none" stroke="var(--border)" stroke-width="1"/>
+        <text x="390" y="105" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">4KB</text>
+
+        <rect x="420" y="85" width="40" height="30" rx="3" fill="none" stroke="var(--border)" stroke-width="1"/>
+        <text x="440" y="105" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">4KB</text>
+
+        <rect x="470" y="85" width="40" height="30" rx="3" fill="none" stroke="var(--border)" stroke-width="1"/>
+        <text x="490" y="105" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">4KB</text>
+
+        <rect x="520" y="85" width="40" height="30" rx="3" fill="none" stroke="var(--border)" stroke-width="1"/>
+        <text x="540" y="105" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">4KB</text>
+
+        <rect x="370" y="125" width="40" height="30" rx="3" fill="none" stroke="var(--border)" stroke-width="1"/>
+        <text x="390" y="145" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">4KB</text>
+
+        <rect x="420" y="125" width="40" height="30" rx="3" fill="none" stroke="var(--border)" stroke-width="1"/>
+        <text x="440" y="145" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">4KB</text>
+
+        <text x="460" y="178" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">overflow storage</text>
+
+        <!-- Bidirectional arrows -->
+        <line x1="255" y1="100" x2="345" y2="100" stroke="var(--green, #5a9)" stroke-width="1.5" marker-end="url(#arrow-q)"/>
+        <line x1="345" y1="115" x2="255" y2="115" stroke="var(--green, #5a9)" stroke-width="1.5" marker-end="url(#arrow-q)"/>
+        <text x="300" y="95" text-anchor="middle" fill="var(--green, #5a9)" font-family="Geist Mono, monospace" font-size="8">evict</text>
+        <text x="300" y="130" text-anchor="middle" fill="var(--green, #5a9)" font-family="Geist Mono, monospace" font-size="8">page in</text>
+      </svg>
+      <figcaption style="text-align:center; color:var(--muted); font-size:0.8rem; margin-top:0.5rem;">NVIDIA Unified Memory enables transparent page transfers between GPU and CPU.</figcaption>
+    </figure>
+
+    <h3>NVIDIA Unified Memory</h3>
+
+    <p>Paged Optimizers utilize <strong>NVIDIA Unified Memory</strong>, a feature that provides a single memory space accessible by both the <strong>GPU</strong> and <strong>CPU</strong>. This allows the system to automatically move data between the two as needed, just like an operating system uses virtual memory.</p>
+
+    <h3>Automatic page transfers</h3>
+
+    <p>The system can automatically transfer chunks of data (typically <strong>4KB pages</strong>) between CPU and GPU. This process is completely transparent - it's as if your GPU has infinite memory, even when it doesn't.</p>
+
+    <p>This dynamic paging helps avoid the dreaded <strong>out-of-memory errors</strong> that plague large-scale fine-tuning tasks.</p>
+
+    <p>That's all I have to share on this topic. I hope you learned something new. If so, cheers!</p>
+
+  </article>
+
+  <div class="post-nav">
+    <a href="../index.html">← all posts</a>
+    <a href="understanding-lora.html">Understanding LoRA →</a>
+  </div>
+
+</body>
+</html>
