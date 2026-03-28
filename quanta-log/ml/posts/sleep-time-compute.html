@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sleep-Time Compute — quanta-log</title>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="../../assets/style.css" />
+
+  <!-- KaTeX v0.16.9 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+    onload="renderMathInElement(document.body, {
+      delimiters: [
+        {left: '$$', right: '$$', display: true},
+        {left: '$', right: '$', display: false}
+      ]
+    });"></script>
+
+  <!-- Theme (apply before paint) -->
+  <script src="../../assets/theme.js"></script>
+</head>
+<body class="post-page">
+
+  <nav>
+    <a href="/" class="logo">shubham</a>
+    <ul class="nav-right">
+      <li><a href="../index.html">posts</a></li>
+      <li><a href="/#topics">topics</a></li>
+      <li>
+        <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+          <svg class="theme-icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+          <svg class="theme-icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+      </li>
+    </ul>
+  </nav>
+
+  <div class="post-header">
+    <div style="display:flex; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap;">
+      <span class="tag">inference</span>
+      <span class="tag">compute</span>
+      <span class="tag">llm</span>
+    </div>
+    <h1>Sleep-Time Compute</h1>
+    <div class="post-meta">
+      <span>Jun 23 2025</span>
+      <span>·</span>
+      <span>4 min read</span>
+      <span>·</span>
+      <span>Shubham</span>
+    </div>
+  </div>
+
+  <article>
+
+    <p>So here's the thing: we've gotten used to scaling compute at the exact moment we ask a question to a large language model. This is what people call <strong>test-time compute</strong> - throw in the context, add the query, and then spin up some big model to do its thing. Sure, it works well for tough problems. But it also burns a ton of compute and time. And honestly, it's a bit wasteful.</p>
+
+    <p>Why? Because this whole setup assumes that every problem is <strong>stateless</strong> - that you only bring the background context at the moment of the query. No memory. No persistence. Every time you ask something, it's like Groundhog Day: the model re-reads and re-reasons from scratch.</p>
+
+    <p>But in reality? Most real-world LLM apps are <strong>stateful</strong>. Think of a chatbot trained on your company's docs. Or a coding assistant that knows your repo. These aren't one-shot tasks. The context doesn't change much between queries. Yet we're still burning compute to reprocess the same stuff again and again.</p>
+
+    <h2>Enter Sleep-Time Compute</h2>
+
+    <p>Here's the idea: instead of waking the model up only when the user sends a query, and then throwing all the context at it in real-time, why not do some of the heavy lifting <strong>before</strong> the question is even asked?</p>
+
+    <p>That's <strong>sleep-time compute</strong>. The model gets some downtime (or low-priority background cycles) to pre-digest the context ahead of time. Then, when the actual query comes in, the model already has a semantically enriched, pre-processed version of the context ready to go.</p>
+
+    <p>So instead of the standard approach:</p>
+
+    $$T_B(q, c) \rightarrow a$$
+
+    <p>where $T$ is the model, $B$ is a big compute budget, $q$ is the query, $c$ is the raw context, and $a$ is the answer... we shift to this:</p>
+
+    $$S(c) \rightarrow c'$$
+    $$T_b(q, c') \rightarrow a$$
+
+    <p>Where $S(c)$ is the <strong>sleep-time step</strong>, transforming the raw context $c$ into a richer representation $c'$. Then $T$ uses a much smaller budget $b$ at test-time, because most of the reasoning was frontloaded.</p>
+
+    <!-- ═══ SVG: Test-time vs Sleep-time comparison ═══ -->
+    <figure style="margin: 2.5rem 0;">
+      <svg viewBox="0 0 680 280" xmlns="http://www.w3.org/2000/svg" style="width:100%; max-width:680px; display:block; margin:0 auto;">
+        <text x="340" y="20" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="11">test-time compute vs sleep-time compute</text>
+
+        <!-- LEFT: Test-time compute -->
+        <text x="165" y="45" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="10">standard (test-time)</text>
+
+        <!-- Context box -->
+        <rect x="20" y="60" width="100" height="35" rx="5" fill="none" stroke="var(--border)" stroke-width="1.2"/>
+        <text x="70" y="82" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="10">context c</text>
+
+        <!-- Query box -->
+        <rect x="20" y="110" width="100" height="35" rx="5" fill="none" stroke="var(--border)" stroke-width="1.2"/>
+        <text x="70" y="132" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="10">query q</text>
+
+        <!-- Both go into big model -->
+        <line x1="120" y1="77" x2="155" y2="115" stroke="var(--border)" stroke-width="1" marker-end="url(#arr-stc)"/>
+        <line x1="120" y1="127" x2="155" y2="127" stroke="var(--border)" stroke-width="1" marker-end="url(#arr-stc)"/>
+
+        <rect x="155" y="100" width="100" height="55" rx="6" fill="color-mix(in srgb, #ef4444 10%, transparent)" stroke="#ef4444" stroke-width="1.5"/>
+        <text x="205" y="122" text-anchor="middle" fill="#ef4444" font-family="Geist Mono, monospace" font-size="10" font-weight="600">Model T</text>
+        <text x="205" y="137" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">budget B</text>
+        <text x="205" y="149" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">(very large)</text>
+
+        <line x1="255" y1="127" x2="285" y2="127" stroke="var(--border)" stroke-width="1" marker-end="url(#arr-stc)"/>
+
+        <rect x="285" y="110" width="60" height="35" rx="5" fill="color-mix(in srgb, var(--green, #4ade80) 8%, transparent)" stroke="var(--green, #4ade80)" stroke-width="1.2"/>
+        <text x="315" y="132" text-anchor="middle" fill="var(--green, #4ade80)" font-family="Geist Mono, monospace" font-size="10">answer</text>
+
+        <!-- Latency label -->
+        <text x="165" y="200" text-anchor="middle" fill="#ef4444" font-family="Geist Mono, monospace" font-size="9">high latency per query</text>
+        <text x="165" y="215" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">re-processes context every time</text>
+
+        <!-- Divider -->
+        <line x1="360" y1="40" x2="360" y2="240" stroke="var(--border)" stroke-width="1" stroke-dasharray="4,3"/>
+
+        <!-- RIGHT: Sleep-time compute -->
+        <text x="520" y="45" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="10">sleep-time compute</text>
+
+        <!-- Sleep step -->
+        <rect x="375" y="55" width="100" height="35" rx="5" fill="none" stroke="var(--border)" stroke-width="1.2"/>
+        <text x="425" y="77" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="10">context c</text>
+
+        <line x1="475" y1="72" x2="500" y2="72" stroke="var(--border)" stroke-width="1" marker-end="url(#arr-stc)"/>
+
+        <rect x="500" y="55" width="80" height="35" rx="5" fill="color-mix(in srgb, var(--green, #4ade80) 8%, transparent)" stroke="var(--green, #4ade80)" stroke-width="1.2"/>
+        <text x="540" y="72" text-anchor="middle" fill="var(--green, #4ade80)" font-family="Geist Mono, monospace" font-size="9" font-weight="600">S(c) sleep</text>
+        <text x="540" y="84" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">pre-process</text>
+
+        <line x1="540" y1="90" x2="540" y2="110" stroke="var(--border)" stroke-width="1" marker-end="url(#arr-stc)"/>
+
+        <rect x="490" y="110" width="100" height="35" rx="5" fill="color-mix(in srgb, var(--green, #4ade80) 12%, transparent)" stroke="var(--green, #4ade80)" stroke-width="1.5"/>
+        <text x="540" y="132" text-anchor="middle" fill="var(--green, #4ade80)" font-family="Geist Mono, monospace" font-size="10" font-weight="600">rich c'</text>
+
+        <!-- Query + c' into small model -->
+        <rect x="375" y="160" width="100" height="35" rx="5" fill="none" stroke="var(--border)" stroke-width="1.2"/>
+        <text x="425" y="182" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="10">query q</text>
+
+        <line x1="475" y1="177" x2="500" y2="150" stroke="var(--border)" stroke-width="1" marker-end="url(#arr-stc)"/>
+        <line x1="540" y1="145" x2="540" y2="195" stroke="var(--border)" stroke-width="1"/>
+        <line x1="540" y1="195" x2="580" y2="195" stroke="var(--border)" stroke-width="1" marker-end="url(#arr-stc)"/>
+        <line x1="475" y1="177" x2="575" y2="195" stroke="var(--border)" stroke-width="0.8" marker-end="url(#arr-stc)"/>
+
+        <rect x="580" y="178" width="85" height="35" rx="5" fill="none" stroke="var(--border)" stroke-width="1.2"/>
+        <text x="622" y="193" text-anchor="middle" fill="var(--text)" font-family="Geist Mono, monospace" font-size="9" font-weight="600">Model T</text>
+        <text x="622" y="206" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">budget b (small)</text>
+
+        <!-- Low latency label -->
+        <text x="510" y="240" text-anchor="middle" fill="var(--green, #4ade80)" font-family="Geist Mono, monospace" font-size="9">low latency per query</text>
+        <text x="510" y="255" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">context already processed</text>
+
+        <defs>
+          <marker id="arr-stc" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse">
+            <polygon points="0 0, 10 3.5, 0 7" fill="var(--border)"/>
+          </marker>
+        </defs>
+      </svg>
+      <figcaption style="text-align:center; color:var(--muted); font-size:0.8rem; margin-top:0.5rem;">Sleep-time frontloads reasoning into an offline step. Query-time model runs lean.</figcaption>
+    </figure>
+
+    <h2>Does It Actually Work?</h2>
+
+    <p>Turns out: yes, but not always.</p>
+
+    <p>Sleep-time compute works best when the questions are <strong>predictable from the context</strong>. Like when you're working inside a domain where the queries follow known patterns - customer support knowledge bases, technical documentation, etc. In these cases, a good chunk of the reasoning can be done ahead of time.</p>
+
+    <!-- ═══ SVG: Query predictability vs performance ═══ -->
+    <figure style="margin: 2.5rem 0;">
+      <svg viewBox="0 0 560 260" xmlns="http://www.w3.org/2000/svg" style="width:100%; max-width:560px; display:block; margin:0 auto;">
+        <text x="280" y="20" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="11">query predictability vs performance gap</text>
+
+        <!-- Axes -->
+        <line x1="60" y1="210" x2="500" y2="210" stroke="var(--border)" stroke-width="1.2"/>
+        <line x1="60" y1="210" x2="60" y2="40" stroke="var(--border)" stroke-width="1.2"/>
+
+        <!-- Axis labels -->
+        <text x="280" y="240" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9">query predictability →</text>
+        <text x="20" y="130" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="9" transform="rotate(-90, 20, 130)">performance →</text>
+
+        <!-- Low / High labels on x-axis -->
+        <text x="80" y="225" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">low</text>
+        <text x="480" y="225" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">high</text>
+
+        <!-- Test-time compute line (roughly flat, high) -->
+        <path d="M80,80 C150,82 250,85 480,88" fill="none" stroke="#ef4444" stroke-width="2"/>
+        <text x="490" y="90" fill="#ef4444" font-family="Geist Mono, monospace" font-size="9">test-time</text>
+
+        <!-- Sleep-time compute line (rises with predictability) -->
+        <path d="M80,165 C150,150 280,110 480,72" fill="none" stroke="var(--green, #4ade80)" stroke-width="2"/>
+        <text x="490" y="74" fill="var(--green, #4ade80)" font-family="Geist Mono, monospace" font-size="9">sleep-time</text>
+
+        <!-- Convergence / crossover zone -->
+        <line x1="200" y1="40" x2="200" y2="210" stroke="var(--border)" stroke-width="1" stroke-dasharray="3,3" opacity="0.5"/>
+        <text x="200" y="35" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">crossover</text>
+
+        <!-- Gap annotation on the right -->
+        <line x1="450" y1="78" x2="450" y2="88" stroke="var(--muted)" stroke-width="1"/>
+        <line x1="445" y1="78" x2="455" y2="78" stroke="var(--muted)" stroke-width="1"/>
+        <line x1="445" y1="88" x2="455" y2="88" stroke="var(--muted)" stroke-width="1"/>
+        <text x="430" y="98" text-anchor="middle" fill="var(--muted)" font-family="Geist Mono, monospace" font-size="8">gap grows</text>
+
+        <!-- Shaded gap area -->
+        <path d="M200,118 C280,107 380,95 480,72 L480,88 C380,104 280,115 200,125 Z" fill="color-mix(in srgb, var(--green, #4ade80) 8%, transparent)"/>
+      </svg>
+      <figcaption style="text-align:center; color:var(--muted); font-size:0.8rem; margin-top:0.5rem;">As query predictability increases, sleep-time compute closes the gap with — and eventually surpasses — test-time compute, at much lower latency.</figcaption>
+    </figure>
+
+    <p>Experiments show that as query predictability increases, the gap between sleep-time and full test-time compute grows - in sleep-time's favor. Better performance <em>and</em> lower latency without spinning up giant models every time someone types a question.</p>
+
+    <h2>Final Thought</h2>
+
+    <p>Models don't just answer questions - they <strong>prepare</strong> for them.</p>
+
+    <p>And honestly, that feels like a smarter way to use machine time.</p>
+
+  </article>
+
+  <div class="post-nav">
+    <a href="../index.html">← all posts</a>
+  </div>
+
+</body>
+</html>
