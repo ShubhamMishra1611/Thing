@@ -45,23 +45,33 @@
 
 <div class="section-label" style="margin-bottom:1.4rem;">Latest</div>
 
-<a class="featured" href="posts/native-sparse-attention.html">
+<a class="featured" href="posts/memory-sparse-attention.html">
   <div class="featured-top">
-    <span class="featured-title">Native Sparse Attention — Hardware-Efficient Sparsity</span>
+    <span class="featured-title">Memory Sparse Attention — 100M-Token Context Without RAG</span>
     <span class="new-badge">new</span>
   </div>
-  <p class="featured-desc">NSA introduces blockwise selection with learned gates. The surprising result: sparsity and hardware efficiency aren't at odds. A complete breakdown of the three algorithms, the gate mechanism, and annotated PyTorch.</p>
+  <p class="featured-desc">MSA routes queries to relevant documents via a learned retrieval subspace, attends sparsely to only top-16 docs, and does it end-to-end — no pipeline. A 4B model beats RAG stacks running 235B generators. Document-wise RoPE, Memory Interleave, tiered CPU/GPU storage.</p>
   <div class="featured-footer">
     <div class="post-tags">
       <span class="tag">attention</span>
-      <span class="tag">paper</span>
-      <span class="tag">pytorch</span>
+      <span class="tag">paper breakdown</span>
+      <span class="tag">long context</span>
     </div>
-    <span class="read-time">Feb 22 · 5 min</span>
+    <span class="read-time">Mar 28 · 10 min</span>
   </div>
 </a>
 
 <ul class="post-list">
+  <a class="post-item" href="posts/native-sparse-attention.html">
+    <div class="post-item-left">
+      <span class="post-item-title">Native Sparse Attention — Hardware-Efficient Sparsity</span>
+      <span class="post-item-sub">Blockwise selection, learned gates, hardware-native sparsity patterns</span>
+    </div>
+    <div class="post-item-right">
+      <span class="post-date">Feb '26</span>
+      <span class="post-min">5 min</span>
+    </div>
+  </a>
   <a class="post-item" href="posts/ranking-across-features.html">
     <div class="post-item-left">
       <span class="post-item-title">Ranking Items Across Multiple Features</span>

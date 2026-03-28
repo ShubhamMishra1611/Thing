@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Memory Sparse Attention — quanta-log</title>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="../../assets/style.css" />
+  <style>.katex-display { overflow: hidden; }</style>
+
+  <!-- KaTeX v0.16.9 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+    onload="renderMathInElement(document.body, {
+      delimiters: [
+        {left: '$$', right: '$$', display: true},
+        {left: '$', right: '$', display: false}
+      ]
+    });"></script>
+
+  <!-- highlight.js v11.9.0 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"
+    onload="hljs.highlightAll();"></script>
+
+  <!-- Theme (apply before paint) -->
+  <script src="../../assets/theme.js"></script>
+</head>
+<body class="post-page">
+
+  <nav>
+    <a href="/" class="logo">shubham</a>
+    <ul class="nav-right">
+      <li><a href="../index.html">posts</a></li>
+      <li><a href="/#topics">topics</a></li>
+      <li><a href="/about.html">about</a></li>
+      <li>
+        <button class="theme-toggle" onclick="toggleTheme()">
+          <span class="theme-icon">◐</span>
+        </button>
+      </li>
+    </ul>
+  </nav>
+
+  <div class="post-header">
+    <div style="display:flex; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap;">
+      <span class="tag">attention</span>
+      <span class="tag">paper breakdown</span>
+      <span class="tag">long context</span>
+    </div>
+    <h1>Memory Sparse Attention — 100M-Token Context Without RAG</h1>
+    <div class="post-meta">
+      <span>Mar 28 2026</span>
+      <span>10 min read</span>
+      <span>Shubham Mishra</span>
+    </div>
+  </div>
+
+  <article>
+
+    <p>
+      The standard path to long-context LLMs hits a wall fast. Full attention is
+      $O(N^2)$ — doubling context quadruples cost. The community's answer has been RAG:
+      retrieve relevant chunks, stuff them in a 128k window, and call it a day.
+      But RAG is a pipeline, not a model, and every joint in that pipeline is a
+      place things can break.
+    </p>
+
+    <p>
+      Memory Sparse Attention (MSA, 2026) takes a different bet: what if the
+      model itself learned to route queries to the right documents, attended sparsely
+      to only those, and did it all end-to-end during pretraining? The result is a
+      4B-parameter model that handles 100M-token corpora and outperforms RAG stacks
+      running 235B-parameter generators on several benchmarks.
+    </p>
+
+    <h2>The Core Idea</h2>
+
+    <p>
+      Instead of attending to all tokens in a massive context, MSA:
+    </p>
+
+    <ol>
+      <li><strong>Encodes each document offline</strong> into compressed key/value tensors ($\bar{K}$, $\bar{V}$) and a separate routing key tensor ($\bar{K}^R$).</li>
+      <li><strong>At query time, routes</strong> the incoming query against the routing keys to find the top-$k$ relevant documents via cosine similarity.</li>
+      <li><strong>Assembles a sparse context</strong> from only those $k$ documents' KVs and runs standard causal attention.</li>
+    </ol>
+
+    <p>
+      The full 100M-token corpus never fits in a forward pass. Only ~1600 tokens
+      (16 docs × 4 compressed chunks × 25 tokens/chunk) appear in the attention
+      matrix at any one time.
+    </p>
+
+    <!-- SVG 1: Architecture Overview -->
+    <svg viewBox="0 0 700 340" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:700px;display:block;margin:2rem auto;">
+      <defs>
+        <marker id="arr1" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="var(--muted)" />
+        </marker>
+        <marker id="arrg" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#4ade80" />
+        </marker>
+        <marker id="arrb" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#60a5fa" />
+        </marker>
+      </defs>
+
+      <!-- background -->
+      <rect width="700" height="340" rx="10" fill="var(--code-bg,#161b22)" />
+
+      <!-- OFFLINE section -->
+      <text x="30" y="28" font-family="Geist Mono,monospace" font-size="10" fill="var(--muted)" letter-spacing="1">OFFLINE (once per corpus)</text>
+      <rect x="20" y="35" width="660" height="80" rx="6" fill="none" stroke="var(--muted)" stroke-dasharray="4 3" stroke-width="1" opacity="0.4"/>
+
+      <!-- Doc corpus box -->
+      <rect x="36" y="50" width="110" height="50" rx="5" fill="var(--surface,#21262d)" stroke="var(--border,#30363d)" stroke-width="1.5"/>
+      <text x="91" y="71" font-family="Geist Mono,monospace" font-size="10" fill="var(--fg)" text-anchor="middle">Document</text>
+      <text x="91" y="86" font-family="Geist Mono,monospace" font-size="10" fill="var(--fg)" text-anchor="middle">Corpus</text>
+
+      <!-- arrow right -->
+      <line x1="147" y1="75" x2="175" y2="75" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#arr1)"/>
+      <text x="161" y="69" font-family="Geist Mono,monospace" font-size="8" fill="var(--muted)" text-anchor="middle">W_K W_V W_KR</text>
+
+      <!-- Memory encoding box -->
+      <rect x="176" y="50" width="130" height="50" rx="5" fill="var(--surface,#21262d)" stroke="var(--border,#30363d)" stroke-width="1.5"/>
+      <text x="241" y="71" font-family="Geist Mono,monospace" font-size="10" fill="var(--fg)" text-anchor="middle">Global Memory</text>
+      <text x="241" y="86" font-family="Geist Mono,monospace" font-size="10" fill="var(--fg)" text-anchor="middle">Encoding</text>
+
+      <!-- arrow right -->
+      <line x1="307" y1="75" x2="335" y2="75" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#arr1)"/>
+      <text x="321" y="69" font-family="Geist Mono,monospace" font-size="8" fill="var(--muted)" text-anchor="middle">pool P=64</text>
+
+      <!-- Memory Bank: two storage tiers -->
+      <rect x="336" y="44" width="120" height="28" rx="5" fill="#1d3a22" stroke="#4ade80" stroke-width="1.5"/>
+      <text x="396" y="58" font-family="Geist Mono,monospace" font-size="9" fill="#4ade80" text-anchor="middle">K̄R — GPU VRAM</text>
+      <text x="396" y="70" font-family="Geist Mono,monospace" font-size="8" fill="#4ade80" text-anchor="middle">(routing keys)</text>
+
+      <rect x="336" y="77" width="120" height="28" rx="5" fill="#1a2e4a" stroke="#60a5fa" stroke-width="1.5"/>
+      <text x="396" y="91" font-family="Geist Mono,monospace" font-size="9" fill="#60a5fa" text-anchor="middle">K̄, V̄ — CPU RAM</text>
+      <text x="396" y="103" font-family="Geist Mono,monospace" font-size="8" fill="#60a5fa" text-anchor="middle">(content KVs)</text>
+
+      <!-- label: Memory Bank -->
+      <text x="396" y="123" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">Memory Bank</text>
+
+      <!-- ONLINE section -->
+      <text x="30" y="148" font-family="Geist Mono,monospace" font-size="10" fill="var(--muted)" letter-spacing="1">ONLINE (per query)</text>
+      <rect x="20" y="155" width="660" height="165" rx="6" fill="none" stroke="var(--muted)" stroke-dasharray="4 3" stroke-width="1" opacity="0.4"/>
+
+      <!-- Query box -->
+      <rect x="36" y="170" width="100" height="40" rx="5" fill="var(--surface,#21262d)" stroke="var(--border,#30363d)" stroke-width="1.5"/>
+      <text x="86" y="186" font-family="Geist Mono,monospace" font-size="10" fill="var(--fg)" text-anchor="middle">User Query</text>
+      <text x="86" y="200" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">→ H_q → Q̄R</text>
+
+      <!-- arrow to routing -->
+      <line x1="137" y1="190" x2="165" y2="190" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arrg)"/>
+
+      <!-- Routing box -->
+      <rect x="166" y="170" width="120" height="40" rx="5" fill="var(--surface,#21262d)" stroke="#4ade80" stroke-width="1.5"/>
+      <text x="226" y="186" font-family="Geist Mono,monospace" font-size="10" fill="#4ade80" text-anchor="middle">Routing</text>
+      <text x="226" y="200" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">cos(Q̄R, K̄R) → top-16</text>
+
+      <!-- arrow down from K̄R -->
+      <line x1="396" y1="108" x2="396" y2="158" stroke="#4ade80" stroke-width="1.5" stroke-dasharray="3 2" marker-end="url(#arrg)"/>
+
+      <!-- arrow right from routing -->
+      <line x1="287" y1="190" x2="315" y2="190" stroke="#60a5fa" stroke-width="1.5" marker-end="url(#arrb)"/>
+
+      <!-- Context assembly box -->
+      <rect x="316" y="170" width="140" height="40" rx="5" fill="var(--surface,#21262d)" stroke="#60a5fa" stroke-width="1.5"/>
+      <text x="386" y="186" font-family="Geist Mono,monospace" font-size="10" fill="#60a5fa" text-anchor="middle">Context Assembly</text>
+      <text x="386" y="200" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">fetch K̄,V̄ top-16 CPU→GPU</text>
+
+      <!-- arrow down from K̄V̄ -->
+      <line x1="396" y1="108" x2="396" y2="158" stroke="#4ade80" stroke-width="1.5" stroke-dasharray="3 2"/>
+      <line x1="386" y1="158" x2="386" y2="168" stroke="#60a5fa" stroke-width="1.5" marker-end="url(#arrb)"/>
+
+      <!-- arrow right from context -->
+      <line x1="457" y1="190" x2="485" y2="190" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#arr1)"/>
+
+      <!-- Sparse attention box -->
+      <rect x="486" y="170" width="160" height="40" rx="5" fill="var(--surface,#21262d)" stroke="var(--border,#30363d)" stroke-width="1.5"/>
+      <text x="566" y="186" font-family="Geist Mono,monospace" font-size="10" fill="var(--fg)" text-anchor="middle">Sparse Attention</text>
+      <text x="566" y="200" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">O(96²) not O(100M²)</text>
+
+      <!-- arrow down to generate -->
+      <line x1="566" y1="211" x2="566" y2="239" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#arr1)"/>
+
+      <!-- Generate answer box -->
+      <rect x="456" y="240" width="220" height="40" rx="5" fill="#1d3a22" stroke="#4ade80" stroke-width="1.5"/>
+      <text x="566" y="256" font-family="Geist Mono,monospace" font-size="10" fill="#4ade80" text-anchor="middle">Generate Answer</text>
+      <text x="566" y="270" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">(or emit doc IDs for multi-hop)</text>
+
+      <!-- key stat -->
+      <text x="86" y="290" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">100M tokens in memory bank</text>
+      <text x="86" y="304" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">~1600 tokens in attention</text>
+    </svg>
+
+    <h2>The Four Novel Components</h2>
+
+    <h3>1. Separate Router Projections</h3>
+
+    <p>
+      Standard transformers project hidden states $H$ into $K$ and $V$ for attention.
+      MSA adds a third projection $W_{KR}$ that produces routing keys used
+      <em>only for retrieval scoring</em>, never in the final attention computation.
+      This lets the model develop a separate "retrieval subspace" supervised by a
+      contrastive loss, independent of the generation subspace.
+    </p>
+
+    <pre><code class="language-python">import torch
+import torch.nn.functional as F
+
+class MSALayer(torch.nn.Module):
+    def __init__(self, d_model, d_head, n_heads, chunk_size=64):
+        super().__init__()
+        self.W_Q  = torch.nn.Linear(d_model, n_heads * d_head, bias=False)
+        self.W_K  = torch.nn.Linear(d_model, n_heads * d_head, bias=False)
+        self.W_V  = torch.nn.Linear(d_model, n_heads * d_head, bias=False)
+        self.W_QR = torch.nn.Linear(d_model, n_heads * d_head, bias=False)  # router Q
+        self.W_KR = torch.nn.Linear(d_model, n_heads * d_head, bias=False)  # router K
+        self.chunk_size = chunk_size
+
+    def encode_doc(self, doc_hidden):
+        """Offline: compress one document into its memory bank entry."""
+        K  = self.W_K(doc_hidden)   # (doc_len, H*D)
+        V  = self.W_V(doc_hidden)
+        KR = self.W_KR(doc_hidden)
+        # chunk mean-pool: (doc_len/P, H*D)
+        P = self.chunk_size
+        K_bar  = K.view(-1, P, K.shape[-1]).mean(1)
+        V_bar  = V.view(-1, P, V.shape[-1]).mean(1)
+        KR_bar = KR.view(-1, P, KR.shape[-1]).mean(1)
+        return K_bar, V_bar, KR_bar
+</code></pre>
+
+    <h3>2. Document-wise RoPE</h3>
+
+    <p>
+      Standard RoPE assigns global position IDs $0, 1, \ldots, L-1$ across the entire
+      context. At 100M tokens, positions far exceed any training range (typically 64k),
+      causing catastrophic quality degradation.
+    </p>
+
+    <p>
+      MSA resets position IDs to 0 at the start of each document. Every document sees
+      positions $0 \ldots \text{doc\_len}$ regardless of where it sits in the corpus.
+      This enables training on 64k-token contexts while inferring over 100M-token corpora
+      with no positional extrapolation.
+    </p>
+
+    <!-- SVG 2: RoPE comparison -->
+    <svg viewBox="0 0 680 240" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:680px;display:block;margin:2rem auto;">
+      <rect width="680" height="240" rx="10" fill="var(--code-bg,#161b22)" />
+
+      <!-- Standard RoPE -->
+      <text x="170" y="28" font-family="Geist Mono,monospace" font-size="11" fill="var(--muted)" text-anchor="middle">Standard RoPE</text>
+
+      <!-- doc blocks -->
+      <rect x="20" y="40" width="80" height="36" rx="4" fill="#1a2e4a" stroke="#60a5fa" stroke-width="1.5"/>
+      <text x="60" y="54" font-family="Geist Mono,monospace" font-size="9" fill="#60a5fa" text-anchor="middle">Doc 1</text>
+      <text x="60" y="68" font-family="Geist Mono,monospace" font-size="8" fill="var(--muted)" text-anchor="middle">pos 0…255</text>
+
+      <rect x="110" y="40" width="80" height="36" rx="4" fill="#1a2e4a" stroke="#60a5fa" stroke-width="1.5"/>
+      <text x="150" y="54" font-family="Geist Mono,monospace" font-size="9" fill="#60a5fa" text-anchor="middle">Doc 2</text>
+      <text x="150" y="68" font-family="Geist Mono,monospace" font-size="8" fill="var(--muted)" text-anchor="middle">pos 256…511</text>
+
+      <rect x="200" y="40" width="80" height="36" rx="4" fill="#1a2e4a" stroke="#60a5fa" stroke-width="1.5"/>
+      <text x="240" y="54" font-family="Geist Mono,monospace" font-size="9" fill="#60a5fa" text-anchor="middle">Doc 3</text>
+      <text x="240" y="68" font-family="Geist Mono,monospace" font-size="8" fill="var(--muted)" text-anchor="middle">pos 512…767</text>
+
+      <text x="305" y="62" font-family="Geist Mono,monospace" font-size="14" fill="var(--muted)" text-anchor="middle">…</text>
+
+      <!-- bad label -->
+      <rect x="20" y="88" width="310" height="22" rx="3" fill="#3d1515" stroke="#f87171" stroke-width="1"/>
+      <text x="175" y="103" font-family="Geist Mono,monospace" font-size="9" fill="#f87171" text-anchor="middle">at 100M tokens → pos 99,999,999 → never seen in training → degradation</text>
+
+      <!-- Document-wise RoPE -->
+      <text x="510" y="28" font-family="Geist Mono,monospace" font-size="11" fill="var(--muted)" text-anchor="middle">Document-wise RoPE (MSA)</text>
+
+      <rect x="360" y="40" width="80" height="36" rx="4" fill="#1d3a22" stroke="#4ade80" stroke-width="1.5"/>
+      <text x="400" y="54" font-family="Geist Mono,monospace" font-size="9" fill="#4ade80" text-anchor="middle">Doc 1</text>
+      <text x="400" y="68" font-family="Geist Mono,monospace" font-size="8" fill="var(--muted)" text-anchor="middle">pos 0…255</text>
+
+      <rect x="450" y="40" width="80" height="36" rx="4" fill="#1d3a22" stroke="#4ade80" stroke-width="1.5"/>
+      <text x="490" y="54" font-family="Geist Mono,monospace" font-size="9" fill="#4ade80" text-anchor="middle">Doc 2</text>
+      <text x="490" y="68" font-family="Geist Mono,monospace" font-size="8" fill="var(--muted)" text-anchor="middle">pos 0…255</text>
+
+      <rect x="540" y="40" width="80" height="36" rx="4" fill="#1d3a22" stroke="#4ade80" stroke-width="1.5"/>
+      <text x="580" y="54" font-family="Geist Mono,monospace" font-size="9" fill="#4ade80" text-anchor="middle">Doc 3</text>
+      <text x="580" y="68" font-family="Geist Mono,monospace" font-size="8" fill="var(--muted)" text-anchor="middle">pos 0…255</text>
+
+      <!-- good label -->
+      <rect x="360" y="88" width="300" height="22" rx="3" fill="#1d3a22" stroke="#4ade80" stroke-width="1"/>
+      <text x="510" y="103" font-family="Geist Mono,monospace" font-size="9" fill="#4ade80" text-anchor="middle">every doc stays within 0…64k → safe extrapolation forever</text>
+
+      <!-- Divider line -->
+      <line x1="340" y1="30" x2="340" y2="120" stroke="var(--border,#30363d)" stroke-width="1" stroke-dasharray="4 3"/>
+
+      <!-- Query offset note -->
+      <text x="340" y="145" font-family="Geist Mono,monospace" font-size="10" fill="var(--muted)" text-anchor="middle">Query tokens get position offset by k (number of retrieved docs)</text>
+      <text x="340" y="160" font-family="Geist Mono,monospace" font-size="10" fill="var(--muted)" text-anchor="middle">so the model perceives retrieved docs as "preceding context" naturally.</text>
+
+      <text x="340" y="190" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">Train on 64k tokens → infer on 100M tokens, no positional degradation.</text>
+    </svg>
+
+    <h3>3. Memory Interleave — Multi-Hop Reasoning</h3>
+
+    <p>
+      Some questions require chaining across documents: "what paper introduced X?"
+      → "what did that paper's authors later build?" This is multi-hop reasoning,
+      and most RAG systems handle it poorly because they only retrieve once.
+    </p>
+
+    <p>
+      MSA's Memory Interleave turns retrieval into a loop. The model emits document
+      IDs as tokens, the system fetches those documents, appends them to the context,
+      re-routes with the expanded context, and repeats until the model generates
+      <code>&lt;End-of-Retrieve&gt;</code>.
+    </p>
+
+    <!-- SVG 3: Memory Interleave loop -->
+    <svg viewBox="0 0 660 280" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:660px;display:block;margin:2rem auto;">
+      <defs>
+        <marker id="arr3" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="var(--muted)" />
+        </marker>
+        <marker id="arr3g" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#4ade80" />
+        </marker>
+        <marker id="arr3o" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#fb923c" />
+        </marker>
+      </defs>
+      <rect width="660" height="280" rx="10" fill="var(--code-bg,#161b22)" />
+
+      <!-- Step boxes -->
+      <!-- 1: Query -->
+      <rect x="20" y="30" width="130" height="44" rx="5" fill="var(--surface,#21262d)" stroke="var(--border,#30363d)" stroke-width="1.5"/>
+      <text x="85" y="48" font-family="Geist Mono,monospace" font-size="10" fill="var(--fg)" text-anchor="middle">1. Query arrives</text>
+      <text x="85" y="63" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">"What caused X?"</text>
+
+      <line x1="151" y1="52" x2="179" y2="52" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#arr3)"/>
+
+      <!-- 2: Route + retrieve -->
+      <rect x="180" y="30" width="150" height="44" rx="5" fill="var(--surface,#21262d)" stroke="#4ade80" stroke-width="1.5"/>
+      <text x="255" y="48" font-family="Geist Mono,monospace" font-size="10" fill="#4ade80" text-anchor="middle">2. Route → top-16 docs</text>
+      <text x="255" y="63" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">cos(Q̄R, K̄R bank)</text>
+
+      <line x1="331" y1="52" x2="359" y2="52" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#arr3)"/>
+
+      <!-- 3: Generate doc IDs -->
+      <rect x="360" y="30" width="160" height="44" rx="5" fill="var(--surface,#21262d)" stroke="#fb923c" stroke-width="1.5"/>
+      <text x="440" y="48" font-family="Geist Mono,monospace" font-size="10" fill="#fb923c" text-anchor="middle">3. Generate doc IDs</text>
+      <text x="440" y="63" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">model outputs [4][7][12]</text>
+
+      <!-- 4: Fetch docs -->
+      <line x1="440" y1="75" x2="440" y2="103" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#arr3)"/>
+      <rect x="360" y="104" width="160" height="44" rx="5" fill="var(--surface,#21262d)" stroke="#60a5fa" stroke-width="1.5"/>
+      <text x="440" y="122" font-family="Geist Mono,monospace" font-size="10" fill="#60a5fa" text-anchor="middle">4. Fetch doc text</text>
+      <text x="440" y="137" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">append to query context</text>
+
+      <!-- 5: Expand context → loop back to route -->
+      <line x1="359" y1="126" x2="255" y2="126" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#arr3)"/>
+      <rect x="180" y="104" width="150" height="44" rx="5" fill="var(--surface,#21262d)" stroke="#4ade80" stroke-width="1.5"/>
+      <text x="255" y="122" font-family="Geist Mono,monospace" font-size="10" fill="#4ade80" text-anchor="middle">5. Re-route</text>
+      <text x="255" y="137" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">with expanded context</text>
+
+      <!-- loop arrow back -->
+      <line x1="255" y1="148" x2="255" y2="170" stroke="var(--muted)" stroke-width="1.5"/>
+      <line x1="255" y1="170" x2="550" y2="170" stroke="var(--muted)" stroke-width="1.5"/>
+      <line x1="550" y1="170" x2="550" y2="80" stroke="var(--muted)" stroke-width="1.5"/>
+      <line x1="550" y1="80" x2="522" y2="80" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#arr3)"/>
+      <text x="402" y="188" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">repeat until &lt;End-of-Retrieve&gt; emitted</text>
+
+      <!-- 6: Answer -->
+      <line x1="180" y1="126" x2="100" y2="126" stroke="#4ade80" stroke-width="1.5" marker-end="url(#arr3g)"/>
+      <rect x="20" y="104" width="130" height="44" rx="5" fill="#1d3a22" stroke="#4ade80" stroke-width="1.5"/>
+      <text x="85" y="122" font-family="Geist Mono,monospace" font-size="10" fill="#4ade80" text-anchor="middle">6. Generate answer</text>
+      <text x="85" y="137" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">full grounded response</text>
+
+      <!-- key insight box -->
+      <rect x="20" y="220" width="620" height="42" rx="5" fill="var(--surface,#21262d)" stroke="var(--border,#30363d)" stroke-width="1"/>
+      <text x="330" y="236" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">Number of hops is adaptive — model decides when to stop. Training treats each hop as an</text>
+      <text x="330" y="252" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">independent sample (single retrieval step), so multi-hop emerges from composition at inference.</text>
+    </svg>
+
+    <h3>4. Contrastive Auxiliary Loss</h3>
+
+    <p>
+      The router projections ($W_{QR}$, $W_{KR}$) are trained with a contrastive loss
+      applied at every MSA layer. Given a query, positive documents (the ones that actually
+      answer it), and negative documents:
+    </p>
+
+    $$\mathcal{L}_{\text{aux}} = -\frac{1}{|P|} \sum_i \log \frac{\exp(s^+_i / \tau)}{\exp(s^+_i / \tau) + \sum_j \exp(s^-_{i,j} / \tau)}$$
+
+    <p>
+      This is InfoNCE / NT-Xent — the same loss used in CLIP and SimCLR. The total
+      training loss alternates between two schedules:
+    </p>
+
+    <pre><code class="language-python">def msa_loss(lm_loss, aux_loss, step, warmup_steps):
+    """
+    Warmup: router alignment priority
+    Main:   generation priority
+    """
+    if step < warmup_steps:
+        return 0.1 * lm_loss + aux_loss
+    else:
+        return lm_loss + 0.1 * aux_loss
+</code></pre>
+
+    <h2>Routing Math</h2>
+
+    <p>
+      For query token $t$, attention head $h$, and chunk $j$ of document $i$:
+    </p>
+
+    $$\text{score}(t, h, j) = \cos\!\left(\bar{Q}^R_{q,h}[t],\; \bar{K}^R_{i,j,h}\right)$$
+
+    <p>
+      Aggregate across heads (mean) then across query tokens (max):
+    </p>
+
+    $$S_{ij} = \max_t \left( \text{mean}_h\; \cos\!\left(\bar{Q}^R_{q,h}[t],\; \bar{K}^R_{i,j,h}\right) \right)$$
+
+    <p>
+      Document score $s_i = \max_j S_{ij}$. Select $\mathcal{I} = \text{argtopk}(\{s_i\}, k=16)$.
+      Then assemble context:
+    </p>
+
+    $$K_{\text{ctx}} = \left[\bar{K}_{\text{doc}_1};\; \bar{K}_{\text{doc}_3};\; \ldots;\; K_q\right], \quad \text{Output} = \text{Attention}(Q_q, K_{\text{ctx}}, V_{\text{ctx}})$$
+
+    <p>
+      With $k=16$ docs, $P=64$, doc length 256: $K_{\text{ctx}}$ is 96 tokens.
+      Standard $O(96^2)$ attention — versus $O((100\text{M})^2)$ for dense. That's
+      a reduction of roughly $10^9\times$ in attention cost.
+    </p>
+
+    <h2>Complexity</h2>
+
+    <p>Training (dominant term: intra-doc attention, linear in corpus size $L$):</p>
+
+    $$O_{\text{train}} \approx O(L \cdot G)$$
+
+    <p>where $G=256$ is the document length and $P=64$ is the chunk size, so $O(4L)$ — linear.</p>
+
+    <p>Inference (per query, amortizing offline pre-processing):</p>
+
+    $$O_{\text{inference}} \approx O(L) \quad \text{(routing)} + O(1) \quad \text{(generation, constant in } L\text{)}$$
+
+    <h2>Tiered Storage at 100M Tokens</h2>
+
+    <p>
+      Getting 100M tokens to fit requires careful placement:
+    </p>
+
+    <ul>
+      <li><strong>$\bar{K}^R$ (routing keys) → GPU VRAM.</strong> With chunk size 64 and d_head 128, routing keys for 100M tokens take ~56 GB — fits on 2×A800.</li>
+      <li><strong>$\bar{K}$, $\bar{V}$ (content KVs) → CPU DRAM.</strong> Only the top-16 docs' content KVs get fetched to GPU per query, asynchronously.</li>
+      <li><strong>Model weights → replicated on each GPU.</strong> 4B-parameter model fits comfortably; each GPU scores against its shard of $\bar{K}^R$, then a global reduce finds the top-16 indices.</li>
+    </ul>
+
+    <h2>What's Actually Novel</h2>
+
+    <table style="width:100%; border-collapse:collapse; font-family:'Geist Mono',monospace; font-size:0.8rem; margin: 1.5rem 0;">
+      <thead>
+        <tr style="border-bottom:1px solid var(--border);">
+          <th style="text-align:left; padding:0.5rem 0.75rem; color:var(--muted);">Component</th>
+          <th style="text-align:center; padding:0.5rem 0.75rem; color:var(--muted);">Novel?</th>
+          <th style="text-align:left; padding:0.5rem 0.75rem; color:var(--muted);">Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:0.5rem 0.75rem;">Sparse top-k attention</td>
+          <td style="text-align:center; padding:0.5rem 0.75rem;">Incremental</td>
+          <td style="padding:0.5rem 0.75rem; color:var(--muted);">Exists in prior work (DSA); MSA makes it differentiable E2E</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:0.5rem 0.75rem;">Router projectors W_QR, W_KR</td>
+          <td style="text-align:center; padding:0.5rem 0.75rem; color:#4ade80;">Yes</td>
+          <td style="padding:0.5rem 0.75rem; color:var(--muted);">Separate retrieval subspace, supervised by L_aux</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:0.5rem 0.75rem;">Document-wise RoPE</td>
+          <td style="text-align:center; padding:0.5rem 0.75rem; color:#4ade80;">Yes</td>
+          <td style="padding:0.5rem 0.75rem; color:var(--muted);">Enables train-short / infer-long without positional extrapolation</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:0.5rem 0.75rem;">Memory Interleave</td>
+          <td style="text-align:center; padding:0.5rem 0.75rem; color:#4ade80;">Yes</td>
+          <td style="padding:0.5rem 0.75rem; color:var(--muted);">Adaptive multi-hop without fixed chain length</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:0.5rem 0.75rem;">Tiered CPU/GPU KV storage</td>
+          <td style="text-align:center; padding:0.5rem 0.75rem; color:#4ade80;">Yes</td>
+          <td style="padding:0.5rem 0.75rem; color:var(--muted);">Practical systems contribution for 100M scale</td>
+        </tr>
+        <tr>
+          <td style="padding:0.5rem 0.75rem;">Contrastive router loss (per layer)</td>
+          <td style="text-align:center; padding:0.5rem 0.75rem; color:#4ade80;">Yes</td>
+          <td style="padding:0.5rem 0.75rem; color:var(--muted);">Applied at every MSA layer during pretraining</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Where You'd Actually Use This</h2>
+
+    <p>
+      A few concrete scenarios where MSA is a better fit than RAG:
+    </p>
+
+    <ul>
+      <li><strong>Personal knowledge base.</strong> Index all your notes, papers, code comments, and emails into one 100M-token corpus. Query with natural language. No chunk-size tuning, no embedding model to maintain. MSA learns the retrieval metric from your actual downstream QA task.</li>
+      <li><strong>Codebase-scale code understanding.</strong> Load an entire monorepo as the memory bank. Ask "where is the retry logic for the payment service?" without embedding-based semantic search, which loses precision on code. Memory Interleave handles multi-hop code navigation naturally.</li>
+      <li><strong>Replace the RAG stack in production.</strong> No embedding model, no vector DB, no reranker, no thresholds. One model, one index of cached KV tensors. Update incrementally when docs change. The 4B MSA model beats RAG pipelines using 235B generators on several benchmarks.</li>
+    </ul>
+
+    <blockquote>
+      The key conceptual shift: RAG is retrieval <em>before</em> the model.
+      MSA is retrieval <em>inside</em> the model — the same weights that generate
+      the answer also decide what to read.
+    </blockquote>
+
+    <h2>Limitations</h2>
+
+    <p>
+      The offline encoding step ($O(L \cdot G)$) must re-run whenever the corpus
+      changes — this is amortized across queries but expensive for high-churn corpora.
+      The tiered storage architecture requires careful GPU/CPU memory management in
+      practice. And the model must be pretrained with MSA from the start (or at least
+      from a reasonably early checkpoint) — bolting router projections onto a
+      fully-pretrained dense model without the contrastive warmup likely won't work well.
+    </p>
+
+    <p>
+      That said, for static or slowly-changing corpora — archives, documentation,
+      books, codebases — the trade-off is clearly in MSA's favour. The RAG pipeline
+      tax (three models, three latencies, three hyperparameter surfaces) is real,
+      and MSA eliminates it in one shot.
+    </p>
+
+  </article>
+
+  <div class="post-nav">
+    <a href="../index.html" class="text-link">← all posts</a>
+    <a href="native-sparse-attention.html">Native Sparse Attention →</a>
+  </div>
+
+  <footer>
+    <span style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">© 2026 Shubham Mishra</span>
+    <div style="display:flex; gap:1.5rem;">
+      <a href="https://github.com/ShubhamMishra1611" style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">github</a>
+      <a href="https://twitter.com/" style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">twitter</a>
+      <a href="mailto:smishraonline@gmail.com?subject=%5Bblog%5D%20hi%20Shubham!" style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">share your thoughts</a>
+    </div>
+  </footer>
+
+</body>
+</html>
