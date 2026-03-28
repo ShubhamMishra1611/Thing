@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ranking Items Across Multiple Features — Shubham Mishra</title>
+  <link rel="stylesheet" href="../../assets/style.css" />
+  <script src="../../assets/theme.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script>hljs.highlightAll();</script>
+</head>
+<body class="post-page">
+
+<nav>
+  <a href="/" class="logo">shubham</a>
+  <ul class="nav-right">
+    <li><a href="/quanta-log/ml/">writing</a></li>
+    <li><a href="#">about</a></li>
+    <li><a href="#">rss</a></li>
+    <li>
+      <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+        <svg class="theme-icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="5"/>
+          <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+          <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+        <svg class="theme-icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </button>
+    </li>
+  </ul>
+</nav>
+
+<article>
+
+<div class="post-header">
+  <div class="post-tags-top">
+    <span class="tag">ranking</span>
+    <span class="tag">mcdm</span>
+    <span class="tag">python</span>
+  </div>
+  <h1>Ranking Items Across Multiple Features</h1>
+  <p class="post-subtitle">Weighted sums, Borda count, Pareto dominance, TOPSIS — and when to use each.</p>
+  <div class="post-meta">Feb 24, 2026 · 8 min read</div>
+</div>
+
+<p>You have items. Each has features A, B, C. You want a ranked list. Seems simple. It's not — and the reason it's not is actually interesting.</p>
+
+<h2>The Setup</h2>
+
+<p>Here's our running dataset throughout this post. Five models, three metrics: accuracy, speed (higher = faster), and memory efficiency (higher = more efficient).</p>
+
+<pre><code class="language-python">import numpy as np
+import pandas as pd
+
+data = {
+    "model":      ["M1",  "M2",  "M3",  "M4",  "M5"],
+    "accuracy":   [0.91,  0.85,  0.93,  0.78,  0.88],
+    "speed":      [0.60,  0.95,  0.50,  0.88,  0.72],
+    "memory_eff": [0.80,  0.65,  0.70,  0.90,  0.55],
+}
+df = pd.DataFrame(data)</code></pre>
+
+<p>We'll plug each method into this same dataset. Let's go.</p>
+
+<h2>Why You Can't Just "Sort"</h2>
+
+<p>The naive move: sort by accuracy. But M3 (best accuracy) is the slowest model. M4 (best memory) has the worst accuracy. There's no free lunch — features trade off against each other.</p>
+
+<p>This is called <strong>multi-criteria decision making (MCDM)</strong>, and it's been studied seriously for decades. The core tension: features are <em>incommensurable</em> — they're on different scales, measure different things, and may conflict. Any ranking method you pick encodes assumptions about how to resolve that conflict. The goal is to pick a method whose assumptions match your actual situation.</p>
+
+<h2>Method 1: Weighted Linear Combination</h2>
+
+<p>The simplest and most common approach. Normalize each feature, then compute a weighted sum.</p>
+
+<pre><code class="language-python">from sklearn.preprocessing import MinMaxScaler
+
+features = ["accuracy", "speed", "memory_eff"]
+weights  = [0.5, 0.3, 0.2]  # must sum to 1
+
+scaler = MinMaxScaler()
+df_norm = df.copy()
+df_norm[features] = scaler.fit_transform(df[features])
+
+df_norm["score"] = df_norm[features].values @ weights
+df_norm.sort_values("score", ascending=False)[["model", "score"]]</code></pre>
+
+<p><strong>The key assumption:</strong> features are <em>compensatory</em>. A weakness in one feature can be offset by strength in another. If M2 is slow but very accurate, the weighted sum might still rank it highly. That's intentional — you're saying "I'll accept a slow model if it's accurate enough."</p>
+
+<p><strong>What trips people up:</strong> forgetting to normalize. If accuracy is 0–1 and speed is 0–1000 ms, the raw weighted sum is dominated by speed regardless of your weights. Always normalize first.</p>
+
+<p><strong>When to use it:</strong> you know the relative importance of features and you're okay with tradeoffs between them.</p>
+
+<h2>Method 2: Borda Count (Rank Aggregation)</h2>
+
+<p>Instead of working with raw values, rank each item per feature, then aggregate the ranks.</p>
+
+<pre><code class="language-python">for f in features:
+    df[f"rank_{f}"] = df[f].rank(ascending=False)
+
+rank_cols = [f"rank_{f}" for f in features]
+df["borda_score"] = df[rank_cols].sum(axis=1)
+df.sort_values("borda_score")[["model"] + rank_cols + ["borda_score"]]</code></pre>
+
+<p>Lower Borda score = better (sum of rank positions).</p>
+
+<p><strong>Why this is useful:</strong> it's completely scale-invariant. You're not operating on raw values at all — only on ordinal positions. Outliers don't distort things. M3 having 0.93 accuracy vs M1's 0.91 gets treated the same as it would if M3 had 0.99 — it's rank 1 either way.</p>
+
+<p><strong>The tradeoff:</strong> you lose magnitude information. A model that's 2× faster than everything else gets the same rank-1 credit as one that's barely faster.</p>
+
+<p><strong>When to use it:</strong> features are on incomparable scales or you have outliers that would distort a weighted sum. Also great as a sanity check against Method 1 — if rankings diverge significantly, your weights are doing a lot of work.</p>
+
+<h2>Method 3: Pareto Dominance</h2>
+
+<p>This one doesn't give you a ranking. It gives you a <em>tier</em>. And sometimes that's the more honest answer.</p>
+
+<p>Item X <strong>dominates</strong> item Y if:</p>
+<ul>
+  <li>X is at least as good as Y on <strong>all</strong> features, AND</li>
+  <li>X is strictly better on <strong>at least one</strong> feature</li>
+</ul>
+
+<p>Items that no one dominates form the <strong>Pareto frontier</strong> — the set of items where you can't improve on one feature without sacrificing another.</p>
+
+<pre><code class="language-python">def is_dominated(row, df, features):
+    for _, other in df.iterrows():
+        if all(other[f] >= row[f] for f in features) and \
+           any(other[f] >  row[f] for f in features):
+            return True
+    return False
+
+df["dominated"] = df.apply(lambda r: is_dominated(r, df, features), axis=1)
+pareto_front = df[~df["dominated"]][["model"] + features]
+print("Pareto frontier:", pareto_front["model"].tolist())</code></pre>
+
+<!-- SVG 1: Pareto frontier in 2D -->
+<svg viewBox="0 0 520 340" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:520px;display:block;margin:2rem auto;" aria-label="Pareto dominance: frontier vs dominated points in 2D feature space">
+  <style>
+    .p-lbl  { font-family:'Geist Mono',monospace; font-size:11px; fill:var(--text,#ccc); text-anchor:middle; }
+    .p-dim  { font-family:'Geist Mono',monospace; font-size:10px; fill:var(--muted,#888); }
+    .p-axis { stroke:var(--border,#555); stroke-width:1.5; fill:none; }
+    .p-grid { stroke:var(--border,#222); stroke-width:1; }
+  </style>
+  <defs>
+    <marker id="p-ax" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L7,3 z" fill="var(--border,#555)"/>
+    </marker>
+    <clipPath id="p-clip"><rect x="60" y="20" width="400" height="270"/></clipPath>
+  </defs>
+
+  <!-- Dominated region shading (bottom-left of frontier) -->
+  <!-- Step frontier: M3(0.93,0.50) → M1(0.91,0.60) → M5(0.88,0.72) → M2(0.85,0.95) -->
+  <!-- Map: accuracy x: 60+(acc-0.78)/(0.95-0.78)*400, speed y: 290-(spd-0.50)/(0.95-0.50)*270 -->
+  <!-- M3: acc=0.93→x=353, spd=0.50→y=290 -->
+  <!-- M1: acc=0.91→x=306, spd=0.60→y=230 -->
+  <!-- M5: acc=0.88→x=235, spd=0.72→y=158 -->
+  <!-- M2: acc=0.85→x=165, spd=0.95→y=20 -->
+  <!-- M4: acc=0.78→x=60,  spd=0.88→y=62  (dominated) -->
+
+  <path d="M 353,290 L 353,230 L 306,230 L 306,158 L 235,158 L 235,20 L 60,20 L 60,290 Z"
+    fill="#c05050" opacity="0.06" clip-path="url(#p-clip)"/>
+
+  <!-- Grid lines -->
+  <line x1="60" y1="20"  x2="460" y2="20"  class="p-grid" opacity="0.3"/>
+  <line x1="60" y1="95"  x2="460" y2="95"  class="p-grid" opacity="0.3"/>
+  <line x1="60" y1="170" x2="460" y2="170" class="p-grid" opacity="0.3"/>
+  <line x1="60" y1="245" x2="460" y2="245" class="p-grid" opacity="0.3"/>
+  <line x1="135" y1="20" x2="135" y2="290" class="p-grid" opacity="0.3"/>
+  <line x1="210" y1="20" x2="210" y2="290" class="p-grid" opacity="0.3"/>
+  <line x1="285" y1="20" x2="285" y2="290" class="p-grid" opacity="0.3"/>
+  <line x1="360" y1="20" x2="360" y2="290" class="p-grid" opacity="0.3"/>
+  <line x1="435" y1="20" x2="435" y2="290" class="p-grid" opacity="0.3"/>
+
+  <!-- Axes -->
+  <line x1="60" y1="290" x2="460" y2="290" class="p-axis" marker-end="url(#p-ax)"/>
+  <line x1="60" y1="290" x2="60"  y2="15"  class="p-axis" marker-end="url(#p-ax)"/>
+
+  <!-- Axis labels -->
+  <text x="260" y="315" class="p-lbl" style="font-weight:600">Accuracy →</text>
+  <text x="18"  y="155" class="p-dim" transform="rotate(-90,18,155)" style="text-anchor:middle;font-weight:600">Speed →</text>
+
+  <!-- X ticks -->
+  <text x="60"  y="304" class="p-dim" style="text-anchor:middle">0.78</text>
+  <text x="165" y="304" class="p-dim" style="text-anchor:middle">0.85</text>
+  <text x="235" y="304" class="p-dim" style="text-anchor:middle">0.88</text>
+  <text x="306" y="304" class="p-dim" style="text-anchor:middle">0.91</text>
+  <text x="353" y="304" class="p-dim" style="text-anchor:middle">0.93</text>
+
+  <!-- Y ticks -->
+  <text x="55" y="294" class="p-dim" style="text-anchor:end">0.50</text>
+  <text x="55" y="234" class="p-dim" style="text-anchor:end">0.60</text>
+  <text x="55" y="162" class="p-dim" style="text-anchor:end">0.72</text>
+  <text x="55" y="66"  class="p-dim" style="text-anchor:end">0.95</text>
+
+  <!-- Pareto frontier step curve -->
+  <polyline points="353,290 353,230 306,230 306,158 235,158 235,20 165,20"
+    stroke="var(--green,#5a9a6a)" stroke-width="2" fill="none" stroke-dasharray="6,3"/>
+
+  <!-- Pareto-optimal points (filled green circles) -->
+  <!-- M3: acc=0.93, spd=0.50 -->
+  <circle cx="353" cy="290" r="9" fill="var(--green,#5a9a6a)" opacity="0.9"/>
+  <text x="368" y="286" class="p-lbl" style="fill:var(--green,#5a9a6a);text-anchor:start">M3</text>
+
+  <!-- M1: acc=0.91, spd=0.60 -->
+  <circle cx="306" cy="230" r="9" fill="var(--green,#5a9a6a)" opacity="0.9"/>
+  <text x="318" y="226" class="p-lbl" style="fill:var(--green,#5a9a6a);text-anchor:start">M1</text>
+
+  <!-- M5: acc=0.88, spd=0.72 -->
+  <circle cx="235" cy="158" r="9" fill="var(--green,#5a9a6a)" opacity="0.9"/>
+  <text x="248" y="154" class="p-lbl" style="fill:var(--green,#5a9a6a);text-anchor:start">M5</text>
+
+  <!-- M2: acc=0.85, spd=0.95 -->
+  <circle cx="165" cy="20" r="9" fill="var(--green,#5a9a6a)" opacity="0.9"/>
+  <text x="178" y="16" class="p-lbl" style="fill:var(--green,#5a9a6a);text-anchor:start">M2</text>
+
+  <!-- Dominated point (hollow grey) -->
+  <!-- M4: acc=0.78, spd=0.88 -->
+  <circle cx="60" cy="62" r="9" fill="var(--card-bg,#1a1a1a)" stroke="var(--muted,#666)" stroke-width="2"/>
+  <text x="74" y="58" class="p-lbl" style="fill:var(--muted,#666);text-anchor:start">M4 (dominated)</text>
+
+  <!-- Legend -->
+  <circle cx="80" cy="325" r="6" fill="var(--green,#5a9a6a)"/>
+  <text x="92" y="329" class="p-dim" style="text-anchor:start;fill:var(--text,#ccc)">Pareto-optimal</text>
+  <circle cx="220" cy="325" r="6" fill="var(--card-bg,#1a1a1a)" stroke="var(--muted,#666)" stroke-width="2"/>
+  <text x="232" y="329" class="p-dim" style="text-anchor:start;fill:var(--text,#ccc)">Dominated</text>
+  <line x1="340" y1="325" x2="365" y2="325" stroke="var(--green,#5a9a6a)" stroke-width="2" stroke-dasharray="5,3"/>
+  <text x="370" y="329" class="p-dim" style="text-anchor:start;fill:var(--text,#ccc)">Frontier</text>
+</svg>
+
+<p><strong>What this tells you:</strong> the Pareto frontier items are the ones worth caring about. Everything off the frontier is strictly worse than something on it — you can throw those out without any debate.</p>
+
+<p><strong>The limitation:</strong> this produces a <strong>partial order</strong>, not a total ranking. Multiple items may sit on the frontier (none dominates the others), and you'll need another method to rank within the frontier.</p>
+
+<p><strong>When to use it:</strong> as a first pass before any scoring method. It's assumption-free — no weights, no scale normalization needed. Use it to eliminate clearly inferior items, then apply Method 1 or 2 on the survivors.</p>
+
+<h2>Method 4: TOPSIS</h2>
+
+<p>TOPSIS (Technique for Order of Preference by Similarity to Ideal Solution) ranks items by their geometric distance from the <strong>ideal best point</strong> relative to the <strong>ideal worst point</strong>.</p>
+
+<p>The idea: define a utopia point (max on every feature) and an anti-utopia point (min on every feature). Score each item by how close it is to utopia vs. how far from anti-utopia.</p>
+
+<pre><code class="language-python">df_norm = df.copy()
+df_norm[features] = scaler.fit_transform(df[features])
+
+ideal_best  = df_norm[features].max()
+ideal_worst = df_norm[features].min()
+
+# Euclidean distance to ideal best and worst
+d_best  = np.sqrt(((df_norm[features] - ideal_best)  ** 2).sum(axis=1))
+d_worst = np.sqrt(((df_norm[features] - ideal_worst) ** 2).sum(axis=1))
+
+df["topsis_score"] = d_worst / (d_best + d_worst)
+df.sort_values("topsis_score", ascending=False)[["model", "topsis_score"]]</code></pre>
+
+<p>Score ranges 0–1. Higher = better. An item scoring 1.0 would be perfect on everything; 0.0 would be worst on everything.</p>
+
+<!-- SVG 2: TOPSIS geometry -->
+<svg viewBox="0 0 480 360" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:480px;display:block;margin:2rem auto;" aria-label="TOPSIS geometry: ideal best, ideal worst, and distances d+ d-">
+  <style>
+    .t-lbl  { font-family:'Geist Mono',monospace; font-size:11px; fill:var(--text,#ccc); text-anchor:middle; }
+    .t-dim  { font-family:'Geist Mono',monospace; font-size:10px; fill:var(--muted,#888); }
+    .t-axis { stroke:var(--border,#555); stroke-width:1.5; fill:none; }
+    .t-grid { stroke:var(--border,#222); stroke-width:1; }
+  </style>
+  <defs>
+    <marker id="t-ax" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L7,3 z" fill="var(--border,#555)"/>
+    </marker>
+    <marker id="t-g" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L7,3 z" fill="var(--green,#5a9a6a)"/>
+    </marker>
+    <marker id="t-r" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L7,3 z" fill="#c05050"/>
+    </marker>
+  </defs>
+
+  <!-- Axes -->
+  <line x1="55" y1="295" x2="440" y2="295" class="t-axis" marker-end="url(#t-ax)"/>
+  <line x1="55" y1="295" x2="55"  y2="20"  class="t-axis" marker-end="url(#t-ax)"/>
+
+  <!-- Grid -->
+  <line x1="55" y1="205" x2="440" y2="205" class="t-grid" opacity="0.3"/>
+  <line x1="55" y1="115" x2="440" y2="115" class="t-grid" opacity="0.3"/>
+  <line x1="165" y1="20" x2="165" y2="295" class="t-grid" opacity="0.3"/>
+  <line x1="275" y1="20" x2="275" y2="295" class="t-grid" opacity="0.3"/>
+  <line x1="385" y1="20" x2="385" y2="295" class="t-grid" opacity="0.3"/>
+
+  <!-- Axis labels -->
+  <text x="248" y="320" class="t-lbl" style="font-weight:600">Feature A (normalized) →</text>
+  <text x="16"  y="158" class="t-dim" transform="rotate(-90,16,158)" style="text-anchor:middle;font-weight:600">Feature B →</text>
+
+  <!-- Tick labels -->
+  <text x="55"  y="309" class="t-dim" style="text-anchor:middle">0.0</text>
+  <text x="165" y="309" class="t-dim" style="text-anchor:middle">0.33</text>
+  <text x="275" y="309" class="t-dim" style="text-anchor:middle">0.67</text>
+  <text x="385" y="309" class="t-dim" style="text-anchor:middle">1.0</text>
+  <text x="48"  y="298" class="t-dim" style="text-anchor:end">0.0</text>
+  <text x="48"  y="208" class="t-dim" style="text-anchor:end">0.33</text>
+  <text x="48"  y="118" class="t-dim" style="text-anchor:end">0.67</text>
+  <text x="48"  y="28"  class="t-dim" style="text-anchor:end">1.0</text>
+
+  <!-- Ideal Best A+ at (1,1) = (385, 25) -->
+  <polygon points="385,25 375,42 395,42" fill="var(--green,#5a9a6a)"/>
+  <text x="385" y="56" class="t-lbl" style="fill:var(--green,#5a9a6a)">A⁺ (ideal best)</text>
+  <text x="385" y="68" class="t-dim" style="fill:var(--green,#5a9a6a);text-anchor:middle">(1.0, 1.0)</text>
+
+  <!-- Ideal Worst A- at (0,0) = (55, 295) -->
+  <polygon points="55,295 65,278 45,278" fill="#c05050"/>
+  <text x="55" y="272" class="t-lbl" style="fill:#c05050">A⁻ (ideal worst)</text>
+  <text x="55" y="260" class="t-dim" style="fill:#c05050;text-anchor:middle">(0.0, 0.0)</text>
+
+  <!-- Data points -->
+  <!-- M1: (0.47, 0.22) → x=55+0.47*330=210, y=295-0.22*270=236 -->
+  <circle cx="210" cy="236" r="7" fill="#7a7ab0" opacity="0.8"/>
+  <text x="222" y="232" class="t-dim">M1</text>
+
+  <!-- M2: (0.41, 1.0) → x=190, y=25 -->
+  <circle cx="190" cy="25" r="7" fill="#7a7ab0" opacity="0.8"/>
+  <text x="202" y="21" class="t-dim">M2</text>
+
+  <!-- M5 (highlighted): (0.59, 0.49) → x=250, y=163 -->
+  <circle cx="250" cy="163" r="9" fill="#c08040" opacity="0.9"/>
+  <text x="264" y="159" class="t-lbl" style="fill:#c08040;text-anchor:start">M2 (example)</text>
+
+  <!-- M4: (0.0, 0.84) → x=55, y=68 -->
+  <circle cx="55" cy="68" r="7" fill="#7a7ab0" opacity="0.8"/>
+  <text x="68" y="64" class="t-dim">M4</text>
+
+  <!-- M3: (1.0, 0.0) → x=385, y=295 -->
+  <circle cx="385" cy="295" r="7" fill="#7a7ab0" opacity="0.8"/>
+  <text x="372" y="288" class="t-dim">M3</text>
+
+  <!-- d+ from M2-example to A+ -->
+  <line x1="250" y1="156" x2="382" y2="35" stroke="var(--green,#5a9a6a)" stroke-width="1.8" stroke-dasharray="5,3" marker-end="url(#t-g)"/>
+  <text x="334" y="85" class="t-dim" style="fill:var(--green,#5a9a6a)">d⁺</text>
+
+  <!-- d- from M2-example to A- -->
+  <line x1="244" y1="169" x2="63" y2="287" stroke="#c05050" stroke-width="1.8" stroke-dasharray="5,3" marker-end="url(#t-r)"/>
+  <text x="145" y="248" class="t-dim" style="fill:#c05050">d⁻</text>
+
+  <!-- Formula box -->
+  <rect x="270" y="185" width="185" height="52" rx="6" fill="var(--card-bg,#111)" stroke="var(--border,#333)" stroke-width="1.5"/>
+  <text x="362" y="206" class="t-dim" style="text-anchor:middle">Score = d⁻ / (d⁺ + d⁻)</text>
+  <text x="362" y="224" class="t-dim" style="text-anchor:middle;fill:var(--green,#5a9a6a)">closer to A⁺ = higher score</text>
+</svg>
+
+<p><strong>What's different from a weighted sum:</strong> TOPSIS accounts for <em>geometry</em> — an item that's mediocre on everything can score worse than one that excels on one feature and is average on others, even if their weighted sums are equal.</p>
+
+<p><strong>Still needs:</strong> normalization and weights (you can weight the distance calculation if features differ in importance). Same compensatory assumption as Method 1 — tradeoffs are allowed.</p>
+
+<p><strong>When to use it:</strong> when you want a more geometrically principled single ranking and Method 1 feels too crude. Common in operations research and supplier/vendor evaluation.</p>
+
+<h2>Putting It Together</h2>
+
+<pre><code class="language-python"># Combine all rankings
+results = pd.DataFrame({"model": df["model"]})
+results["weighted_rank"] = df_norm["score"].rank(ascending=False).astype(int)
+results["borda_rank"]    = df["borda_score"].rank(ascending=True).astype(int)
+results["pareto_front"]  = (~df["dominated"]).map({True: "Yes", False: "No"})
+results["topsis_rank"]   = df["topsis_score"].rank(ascending=False).astype(int)
+print(results)</code></pre>
+
+<p>If all four methods agree on the top item — it's probably your best item. If they disagree substantially, that's not a flaw: it means the items are genuinely close and the ranking depends on what you value.</p>
+
+<h2>Which Method to Pick</h2>
+
+<table style="width:100%;border-collapse:collapse;margin:1.5rem 0;">
+  <thead>
+    <tr style="border-bottom:1px solid var(--border,#333);">
+      <th style="text-align:left;padding:0.6rem 0.8rem;font-family:'Geist Mono',monospace;font-size:12px;color:var(--muted,#888);font-weight:400;">Situation</th>
+      <th style="text-align:left;padding:0.6rem 0.8rem;font-family:'Geist Mono',monospace;font-size:12px;color:var(--muted,#888);font-weight:400;">Use</th>
+    </tr>
+  </thead>
+  <tbody style="font-family:'Geist Mono',monospace;font-size:13px;">
+    <tr style="border-bottom:1px solid var(--border,#222);">
+      <td style="padding:0.6rem 0.8rem;color:var(--text,#ccc);">You know feature importance</td>
+      <td style="padding:0.6rem 0.8rem;color:var(--green,#5a9a6a);">Weighted linear combination</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border,#222);">
+      <td style="padding:0.6rem 0.8rem;color:var(--text,#ccc);">Features on incomparable scales</td>
+      <td style="padding:0.6rem 0.8rem;color:var(--green,#5a9a6a);">Borda count</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border,#222);">
+      <td style="padding:0.6rem 0.8rem;color:var(--text,#ccc);">Want assumption-free elimination</td>
+      <td style="padding:0.6rem 0.8rem;color:var(--green,#5a9a6a);">Pareto dominance first, then anything</td>
+    </tr>
+    <tr>
+      <td style="padding:0.6rem 0.8rem;color:var(--text,#ccc);">Want geometric precision</td>
+      <td style="padding:0.6rem 0.8rem;color:var(--green,#5a9a6a);">TOPSIS</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>One honest workflow: <strong>Pareto first to eliminate losers → Borda or TOPSIS to rank survivors → sensitivity-test by varying weights</strong>. If your top item stays top across weight variations, you're confident. If it flips, the items are genuinely close and maybe you don't need a strict ranking at all — a shortlist is the more defensible answer.</p>
+
+<p>Multi-criteria ranking is fundamentally a value judgment encoded in math. Making the assumptions explicit is the whole point.</p>
+
+</article>
+
+<footer>
+  <span class="footer-left">© 2026 Shubham Mishra</span>
+  <ul class="footer-links">
+    <li><a href="https://github.com/ShubhamMishra1611">github</a></li>
+    <li><a href="#">twitter</a></li>
+    <li><a href="#">rss</a></li>
+  </ul>
+</footer>
+
+</body>
+</html>
