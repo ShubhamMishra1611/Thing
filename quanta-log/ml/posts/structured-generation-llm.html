@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Structured Generation from LLM — Shubham Mishra</title>
+  <link rel="stylesheet" href="../../assets/style.css" />
+  <script src="../../assets/theme.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
+  <script>hljs.highlightAll();</script>
+</head>
+<body class="post-page">
+
+<nav>
+  <a href="/" class="logo">shubham</a>
+  <ul class="nav-right">
+    <li><a href="/quanta-log/ml/">writing</a></li>
+    <li><a href="#">about</a></li>
+    <li><a href="#">rss</a></li>
+    <li>
+      <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+        <svg class="theme-icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="5"/>
+          <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+          <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+        <svg class="theme-icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </button>
+    </li>
+  </ul>
+</nav>
+
+<article>
+
+<div class="post-header">
+  <div class="post-tags-top">
+    <span class="tag">llm</span>
+    <span class="tag">inference</span>
+    <span class="tag">python</span>
+    <span class="tag">structured output</span>
+  </div>
+  <h1>Structured Generation from LLM</h1>
+  <p class="post-subtitle">Logit masking, Pydantic schemas, conditional fields, and nested structures — building reliable JSON generation from scratch.</p>
+  <div class="post-meta">Feb 12, 2026 · 15 min read</div>
+</div>
+
+<p><em>Disclaimer: Everything I am writing is the result of my understanding and several days of experimenting with generation logic.</em></p>
+
+<p>Cool…. The issue is LLM just cannot be trusted to generate structured responses. But we need it — for what you say? Well believe me we need it.</p>
+
+<p>We can constrain LLM output using the following methods:</p>
+
+<ul>
+  <li>Few-shot prompt and parsing</li>
+  <li>NL (Natural Language) to JSON</li>
+  <li>Constraint Decoding</li>
+  <li>SAP (Structured Access Protocol)</li>
+  <li>Template filling</li>
+  <li>Context free grammar</li>
+</ul>
+
+<p>Now step by step how can we think about it.</p>
+
+<h2>The Problem</h2>
+
+<p>Let's say I want my model to generate a JSON output like this:</p>
+
+<pre><code class="language-json">{
+  "reasoning": "The text contains information about two people, Sarah and John...",
+  "db_type": "graph",
+  "summary": "Sarah works at Microsoft in Seattle and prefers tea. John lives in Portland",
+  "triplets": [
+    {
+      "head": "Sarah",
+      "relation": "works_at",
+      "object": "Microsoft",
+      "head_type": "Person",
+      "object_type": "Company"
+    },
+    {
+      "head": "Sarah",
+      "relation": "prefers",
+      "object": "tea",
+      "head_type": "Person",
+      "object_type": "Preference"
+    }
+  ]
+}</code></pre>
+
+<p>Given a text, the LLM classifies the type of database required to store it — either a vector database or a knowledge graph. A summary is always generated, while triplets are only generated when the LLM picks a knowledge graph.</p>
+
+<p>Given this scenario — or even in general — we want the LLM to generate only certain field values while being locked out of others. What if we want classification to be strictly "correct" or "incorrect"? What if confidence levels must be only "high", "mid", or "low"? The model might generate "very high" or "somewhat confident", which breaks downstream processing.</p>
+
+<blockquote>Okay, we'll apply a mask to the logits so that, during inference, the model only considers the required tokens and completely ignores all others, just like you only consider her and ignore everything else. Let me show you how.</blockquote>
+
+<h2>Version 1: Basic Logit Masking</h2>
+
+<pre><code class="language-python">from transformers import AutoTokenizer, AutoModelForCausalLM
+import torch
+import torch.nn.functional as F
+import json
+
+model_name = "google/gemma-3-270m-it"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForCausalLM.from_pretrained(
+    model_name,
+    torch_dtype=torch.float16,
+    device_map="auto"
+)
+
+def generate_single_token(model, tokenizer, input_text, valid_token_ids=None):
+    """Generate exactly one token with optional constraints"""
+    inputs = tokenizer(input_text, return_tensors="pt").to(model.device)
+
+    with torch.no_grad():
+        outputs = model(**inputs)
+        logits = outputs.logits[0, -1, :]  # Get last token logits
+
+        # Apply constraints if provided
+        if valid_token_ids is not None:
+            mask = torch.full_like(logits, float('-inf'))
+            mask[valid_token_ids] = 0
+            logits = logits + mask
+
+        # Get most likely token (greedy)
+        next_token_id = torch.argmax(logits)
+
+    return tokenizer.decode([next_token_id], skip_special_tokens=True)
+
+def should_stop_reasoning(current_text, new_token):
+    """Check if reasoning field is complete"""
+    updated_text = current_text + new_token
+    if updated_text.endswith('", "') or updated_text.endswith('",'):
+        return True
+    return False
+
+# Initial prompt
+prompt = 'You are a fact checker. Reply in json as {"reasoning": reason, "classification": [correct|incorrect], "confidence": [high|low|mid]}. User: Sun rises from the west. Assistant: {"reasoning": "'
+
+# Step 1: Generate reasoning (free text)
+current_text = prompt
+reasoning_parts = []
+for _ in range(50):
+    next_token = generate_single_token(model, tokenizer, current_text)
+    if should_stop_reasoning(current_text, next_token):
+        break
+    reasoning_parts.append(next_token)
+    current_text += next_token
+reasoning = ''.join(reasoning_parts)
+
+# Step 2: Generate classification (constrained)
+classification_prompt = prompt + reasoning + '", "classification": "'
+correct_token_id   = tokenizer.encode("correct",   add_special_tokens=False)[0]
+incorrect_token_id = tokenizer.encode("incorrect", add_special_tokens=False)[0]
+valid_classification_tokens = [correct_token_id, incorrect_token_id]
+classification = generate_single_token(model, tokenizer, classification_prompt, valid_classification_tokens)
+
+# Step 3: Generate confidence (constrained)
+confidence_prompt = classification_prompt + classification + '", "confidence": "'
+high_token_id = tokenizer.encode("high", add_special_tokens=False)[0]
+low_token_id  = tokenizer.encode("low",  add_special_tokens=False)[0]
+mid_token_id  = tokenizer.encode("mid",  add_special_tokens=False)[0]
+valid_confidence_tokens = [high_token_id, low_token_id, mid_token_id]
+confidence = generate_single_token(model, tokenizer, confidence_prompt, valid_confidence_tokens)
+
+final_json_dict = {
+    "reasoning": reasoning,
+    "classification": classification,
+    "confidence": confidence
+}
+print(json.dumps(final_json_dict, indent=2))</code></pre>
+
+<p>The heart of this approach is <code>generate_single_token()</code>. When we get the model's logits for the next token, we create a mask. The model has probabilities for every token in its vocabulary, but we only want specific ones. So we set all invalid tokens to negative infinity probability, then pick the most likely valid token using argmax.</p>
+
+<pre><code class="language-python">def generate_single_token(model, tokenizer, input_text, valid_token_ids=None):
+    inputs = tokenizer(input_text, return_tensors="pt").to(model.device)
+
+    with torch.no_grad():
+        outputs = model(**inputs)
+        logits = outputs.logits[0, -1, :]
+
+        if valid_token_ids is not None:
+            mask = torch.full_like(logits, float('-inf'))
+            mask[valid_token_ids] = 0
+            logits = logits + mask
+
+        next_token_id = torch.argmax(logits)
+
+    return tokenizer.decode([next_token_id], skip_special_tokens=True)</code></pre>
+
+<p>For free text fields, we let the model generate naturally, token by token, until we detect a field boundary pattern like <code>", "</code> or <code>",</code>.</p>
+
+<p>For constrained fields like classification and confidence, we encode each valid option to get its token ID, then pass only those token IDs as constraints. The model is forced to pick from our whitelist.</p>
+
+<p>Here's something interesting: every time we add a token to the prompt and generate the next one, the probability distribution changes. The model isn't generating all at once — it's generating with context. Each new token shifts what the model thinks should come next. In constrained generation, we're literally steering the model step by step.</p>
+
+<p>But look at this code carefully. The problem: we're manually building the JSON string. Every field name is hardcoded. If tomorrow I want to add a new field or change the schema, I have to rewrite the entire generation logic. Imagine doing this for a schema with 10 fields or nested structures.</p>
+
+<h2>Version 2: Pydantic Schema Integration</h2>
+
+<p>We want developers to define the structure themselves without touching the generation code. Pydantic lets us define data models with type hints, and we can introspect these models at runtime.</p>
+
+<p>Instead of hardcoding our JSON structure, we define it as a Pydantic model. Pydantic knows about all fields, their types, and their constraints. We can ask "what fields does this model have?" and "what type is this field?" and build our generation logic dynamically.</p>
+
+<pre><code class="language-python">def generate_structured_json(model, tokenizer, prompt, schema_class):
+    """Generate JSON following a Pydantic schema"""
+
+    fields = schema_class.model_fields
+    field_names = list(fields.keys())
+
+    current_text = prompt + '{"'
+    result = {}
+
+    for i, (field_name, field_info) in enumerate(fields.items()):
+        current_text += f'{field_name}": "'
+
+        # Check if field has constrained values (Literal type)
+        if is_literal_type(field_info.annotation):
+            valid_values = extract_literal_values(field_info.annotation)
+            field_value = generate_constrained(model, tokenizer, current_text, valid_values)
+        else:
+            field_value = generate_free_text(model, tokenizer, current_text)
+
+        result[field_name] = field_value
+        current_text += field_value
+
+        # Add field separator or closing brace
+        if i < len(field_names) - 1:
+            current_text += '", "'
+        else:
+            current_text += '"}'
+
+    return result</code></pre>
+
+<p>The key is using Python's <code>typing</code> module to introspect type annotations at runtime. For <code>Literal["correct", "incorrect"]</code> we extract the list <code>["correct", "incorrect"]</code> and use those as constraints. For a plain <code>str</code> type, we generate freely.</p>
+
+<p>As we generate each field value, we append it to <code>current_text</code>. Every field we generate becomes part of the context for the next field. The model sees the entire JSON built so far when predicting the next token.</p>
+
+<h2>Version 3: Conditional Fields</h2>
+
+<p>The issue with Version 2: all fields are always generated. But in real applications, some fields should only exist based on previous field values. Think of a form where selecting "other" in a dropdown reveals a text field — same concept.</p>
+
+<p>We need two things: the ability to mark fields as optional, and logic to decide whether to generate a field based on already-generated values.</p>
+
+<pre><code class="language-python">def get_literal_values(field_annotation):
+    """Extract literal values from type annotation"""
+    origin = get_origin(field_annotation)
+    args = get_args(field_annotation)
+
+    if origin is Union:
+        # This is Optional — find the non-None type
+        non_none_types = [arg for arg in args if arg != type(None)]
+        has_none = type(None) in args
+
+        if len(non_none_types) == 1:
+            inner_origin = get_origin(non_none_types[0])
+            inner_args = get_args(non_none_types[0])
+
+            if inner_origin is Literal:
+                return list(inner_args), has_none
+
+    # Handle direct Literal
+    if origin is Literal:
+        return list(args), False
+
+    return None, False</code></pre>
+
+<p>In the generation loop, before generating each field, we check if it should be skipped:</p>
+
+<pre><code class="language-python">for i, (field_name, field_info) in enumerate(field_list):
+    # Skip triplets if db_type is not graph
+    if field_name == "triplets":
+        if result.get("db_type") != "graph":
+            continue  # Skip this field entirely
+
+    current_text += f'{field_name}": '
+    # ... rest of generation logic</code></pre>
+
+<p>There's a subtle issue here: JSON formatting. If we skip a field, we can't leave a trailing comma. We need to look ahead and count remaining fields that won't be skipped. Only add a comma separator if there are actually more fields coming.</p>
+
+<p>This means our output structure is truly dynamic. When <code>db_type</code> is "vector", we get a three-field JSON. When it's "graph", we get a four-field JSON with triplets included.</p>
+
+<h2>Version 4: Nested Structures &amp; Arrays</h2>
+
+<p>The final challenge is generating arrays of nested objects. Think about knowledge graph triplets — each triplet is an object with multiple fields: head entity, relation, tail entity, and entity types. And we want multiple such triplets in an array.</p>
+
+<p>There's a fundamental issue to address: we cannot rely on the LLM to generate the JSON structure itself. The model might generate invalid JSON, forget closing brackets, mess up comma placement. We need full control over structure — the model only fills in the content. (Also, ideally we'd want a backtracking mechanism when generation fails grammatically. That's future work, but keep it in mind.)</p>
+
+<p>For generating a single triplet object, we define its structure: five fields with specific constraints. Head, relation, and object should be single words. Head_type and object_type can be short free text.</p>
+
+<p>The important part: context. When generating the second field of a triplet, the model sees the first field. When generating the third, it sees the first two. This is powerful — if the head is "Einstein", it's more likely to generate relations like "developed" or "discovered" rather than "purchased" or "employed".</p>
+
+<p>For the array itself, we wrap everything in square brackets. We generate one triplet, add it to our context as a complete JSON object, then generate the next. Each new triplet is generated with full awareness of previous triplets — coherence is maintained by context.</p>
+
+<h2>How It All Works Together</h2>
+
+<p>Let's step back and see the complete picture:</p>
+
+<ol>
+  <li>Define your schema with Pydantic, including nested structures and constraints</li>
+  <li>Generate fields sequentially, building the JSON string as we go</li>
+  <li>At each step, apply the right type of constraint based on field type:
+    <ul>
+      <li><code>Literal</code> types → token masking to valid options</li>
+      <li><code>str</code> types → free text with stopping logic</li>
+      <li>Array types → recursive generation of elements</li>
+    </ul>
+  </li>
+  <li>Use conditional logic to skip fields based on previously generated values</li>
+  <li>Validate the output with Pydantic to ensure schema compliance</li>
+</ol>
+
+<p>The magic: every token is generated with full context. The model always sees the entire JSON generated so far. This rich context allows the model to generate coherent, consistent content while we maintain structural correctness.</p>
+
+<p>Here's why this approach is powerful: we're not letting the model generate <em>structure</em>, only <em>content</em>. Structure is provided through our constraints and generation logic. Content — the actual semantic information — comes from the model. This separation of concerns gives us reliability without sacrificing intelligence.</p>
+
+<h2>Final Complete Code</h2>
+
+<pre><code class="language-python">from transformers import AutoTokenizer, AutoModelForCausalLM
+import torch
+import torch.nn.functional as F
+import json
+from typing import List, Union, Literal, get_origin, get_args, Optional
+from pydantic import BaseModel, Field
+import typing
+
+model_name = "google/gemma-3-270m-it"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForCausalLM.from_pretrained(
+    model_name,
+    torch_dtype=torch.bfloat16,
+    device_map="auto"
+)
+
+def generate_single_token(model, tokenizer, input_text, valid_token_ids=None):
+    inputs = tokenizer(input_text, return_tensors="pt").to(model.device)
+    with torch.no_grad():
+        outputs = model(**inputs)
+        logits = outputs.logits[0, -1, :]
+        if valid_token_ids is not None:
+            mask = torch.full_like(logits, float('-inf'))
+            mask[valid_token_ids] = 0
+            logits = logits + mask
+        next_token_id = torch.argmax(logits)
+    return tokenizer.decode([next_token_id], skip_special_tokens=True)
+
+def should_stop_field(current_text, new_token, constraint_type="free"):
+    if constraint_type == "free":
+        return '"' in new_token
+    elif constraint_type == "one_word":
+        return '"' in new_token or any(char.isspace() for char in new_token)
+    return '"' in new_token
+
+def get_literal_values(field_annotation):
+    origin = get_origin(field_annotation)
+    args = get_args(field_annotation)
+
+    if origin is Union:
+        non_none_types = [arg for arg in args if arg != type(None)]
+        has_none = type(None) in args
+        if len(non_none_types) == 1:
+            inner_origin = get_origin(non_none_types[0])
+            inner_args = get_args(non_none_types[0])
+            if inner_origin is Literal:
+                return list(inner_args), has_none
+
+    if origin is Literal:
+        return list(args), False
+
+    return None, False
+
+def generate_free_text(model, tokenizer, current_text, max_tokens=30):
+    field_parts = []
+    temp_text = current_text
+    for _ in range(max_tokens):
+        next_token = generate_single_token(model, tokenizer, temp_text)
+        if should_stop_field(temp_text, next_token, "free"):
+            break
+        field_parts.append(next_token)
+        temp_text += next_token
+    return ''.join(field_parts).strip()
+
+def generate_one_word(model, tokenizer, current_text, max_attempts=10):
+    word_parts = []
+    temp_text = current_text
+    for _ in range(max_attempts):
+        next_token = generate_single_token(model, tokenizer, temp_text)
+        if '"' in next_token or next_token.strip() in [',', '}', ']']:
+            break
+        word_parts.append(next_token)
+        temp_text += next_token
+        combined = ''.join(word_parts).strip()
+        if combined and (' ' in combined or any(c in combined for c in '.,;:!?')):
+            word_parts = word_parts[:-1]
+            break
+    result = ''.join(word_parts).strip()
+    return result.split()[0] if result.split() else result
+
+def generate_constrained_choice(model, tokenizer, current_text, valid_values, allow_null=False):
+    valid_tokens = []
+    value_token_map = {}
+
+    for value in valid_values:
+        tokens = tokenizer.encode(str(value), add_special_tokens=False)
+        if tokens:
+            first_token = tokens[0]
+            valid_tokens.append(first_token)
+            value_token_map[first_token] = str(value)
+
+    if allow_null:
+        null_tokens = tokenizer.encode('null', add_special_tokens=False)
+        if null_tokens:
+            valid_tokens.extend(null_tokens)
+            for token in null_tokens:
+                value_token_map[token] = None
+
+    if valid_tokens:
+        valid_tokens = list(set(valid_tokens))
+        generated_token = generate_single_token(model, tokenizer, current_text, valid_tokens)
+        generated_token_id = tokenizer.encode(generated_token, add_special_tokens=False)
+        if generated_token_id and generated_token_id[0] in value_token_map:
+            return value_token_map[generated_token_id[0]]
+        for value in valid_values:
+            if str(value).startswith(generated_token.strip()):
+                return str(value)
+
+    return str(valid_values[0])
+
+def generate_triplet(model, tokenizer, current_text):
+    triplet = {}
+    temp_text = current_text + "{"
+    triplet_fields = [
+        ("head",        "one_word"),
+        ("relation",    "one_word"),
+        ("object",      "one_word"),
+        ("head_type",   "free_text"),
+        ("object_type", "free_text"),
+    ]
+    for i, (field_name, constraint_type) in enumerate(triplet_fields):
+        temp_text += f'"{field_name}": "'
+        if constraint_type == "one_word":
+            field_value = generate_one_word(model, tokenizer, temp_text)
+        else:
+            field_value = generate_free_text(model, tokenizer, temp_text, max_tokens=10)
+        triplet[field_name] = field_value
+        temp_text += field_value + '"'
+        if i < len(triplet_fields) - 1:
+            temp_text += ', '
+        else:
+            temp_text += '}'
+    return triplet
+
+def generate_triplets_array(model, tokenizer, current_text, max_triplets=3):
+    triplets = []
+    temp_text = current_text + "["
+    for i in range(max_triplets):
+        triplet = generate_triplet(model, tokenizer, temp_text)
+        triplets.append(triplet)
+        if i == 0:
+            temp_text += json.dumps(triplet, separators=(',', ':'))
+        else:
+            temp_text += ", " + json.dumps(triplet, separators=(',', ':'))
+        if i >= 1:
+            break
+    temp_text += "]"
+    return triplets
+
+def generate_field_value(model, tokenizer, current_text, field_info, field_annotation):
+    literal_values, has_none = get_literal_values(field_annotation)
+    if literal_values is not None:
+        return generate_constrained_choice(model, tokenizer, current_text, literal_values, has_none)
+    else:
+        return generate_free_text(model, tokenizer, current_text)
+
+def generate_structured_json(model, tokenizer, prompt, schema_class):
+    fields = schema_class.model_fields
+    current_text = prompt + '{"'
+    result = {}
+    field_list = list(fields.items())
+
+    for i, (field_name, field_info) in enumerate(field_list):
+        # Conditional skip
+        if field_name == "triplets":
+            if result.get("db_type") != "graph":
+                continue
+
+        current_text += f'{field_name}": '
+
+        if field_name == "triplets":
+            triplets = generate_triplets_array(model, tokenizer, current_text)
+            result[field_name] = triplets
+            current_text += json.dumps(triplets, separators=(',', ':'))
+        else:
+            current_text += '"'
+            field_value = generate_field_value(
+                model, tokenizer, current_text, field_info, field_info.annotation
+            )
+            if field_value is None:
+                current_text = current_text[:-1] + "null"
+            else:
+                current_text += str(field_value) + '"'
+            result[field_name] = field_value
+
+        # Determine separator
+        remaining_fields = []
+        for j in range(i + 1, len(field_list)):
+            next_name = field_list[j][0]
+            if next_name == "triplets" and result.get("db_type") != "graph":
+                continue
+            remaining_fields.append(next_name)
+
+        if remaining_fields:
+            current_text += ', "'
+        else:
+            current_text += '}'
+
+    return result
+
+
+# --- Schema definition ---
+class ExtendedOutput(BaseModel):
+    reasoning: str = Field(description="Free text reasoning")
+    db_type: Optional[Literal["graph", "vector"]] = Field(description="Database type choice")
+    summary: str = Field(description="Free text summary")
+    triplets: Optional[List[dict]] = Field(default=None, description="Only present if db_type is graph")
+
+
+if __name__ == "__main__":
+    test_prompt = '''You are an AI assistant that extracts knowledge and determines storage type.
+Example output format:
+{"reasoning": "...", "db_type": "graph", "summary": "...", "triplets": [...]}
+Analyze the following:
+User: "[sarah] I work at Microsoft in Seattle and prefer tea. [john] I live in Portland"
+Assistant: '''
+
+    result = generate_structured_json(model, tokenizer, test_prompt, ExtendedOutput)
+    print(json.dumps(result, indent=2))
+
+    if result.get("db_type") == "graph" and "triplets" not in result:
+        print("Warning: db_type is 'graph' but no triplets generated")
+    elif result.get("db_type") != "graph" and "triplets" in result:
+        print("Warning: triplets present but db_type is not 'graph'")
+    else:
+        print("Conditional field logic working correctly!")</code></pre>
+
+<h2>Conclusion</h2>
+
+<p>We've built a complete structured generation system that handles constraints, conditional fields, and nested structures. The key insight is treating generation as a two-level problem: <strong>structure</strong> and <strong>content</strong>. We control structure absolutely through logit masking and generation logic. We let the model handle content through its language understanding.</p>
+
+<p>This gives you the reliability of template-based systems with the flexibility and intelligence of LLMs. You get valid JSON every time, with semantically meaningful content extracted by the model.</p>
+
+<p>The journey from hardcoded JSON to dynamic nested structures shows how powerful combining type systems with constrained decoding can be. Pydantic gives us schema definition and introspection. Logit masking gives us token-level control. Together they enable reliable structured output from LLMs.</p>
+
+<p>Some directions to explore further:</p>
+<ul>
+  <li>Implementing backtracking when generation fails grammatically</li>
+  <li>Handling more complex nested structures like arrays of arrays</li>
+  <li>Adding dynamic stopping conditions for variable-length arrays</li>
+  <li>Integrating with formal grammar parsers (e.g., Lark, EBNF)</li>
+  <li>Optimizing performance through batching or KV-cache reuse</li>
+</ul>
+
+<p>Hope this helps you build reliable structured outputs from LLMs!</p>
+
+</article>
+
+<footer>
+  <span class="footer-left">© 2026 Shubham Mishra</span>
+  <ul class="footer-links">
+    <li><a href="https://github.com/ShubhamMishra1611">github</a></li>
+    <li><a href="#">twitter</a></li>
+    <li><a href="#">rss</a></li>
+  </ul>
+</footer>
+
+</body>
+</html>
