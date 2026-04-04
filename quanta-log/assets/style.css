@@ -647,7 +647,7 @@ footer {
    PERSONAL WORLD — Moss & Stone theme (body.personal)
    ════════════════════════════════════════════════════════════ */
 body.personal,
-body.personal[data-theme="dark"] {
+[data-theme="dark"] body.personal {
   --bg:       #0f110e;
   --surface:  #161814;
   --border:   #222018;
@@ -661,7 +661,7 @@ body.personal[data-theme="dark"] {
   --code-bg:  #131510;
 }
 
-body.personal[data-theme="light"] {
+[data-theme="light"] body.personal {
   --bg:       #f6f5f0;
   --surface:  #eeedea;
   --border:   #d4d0c0;
@@ -695,7 +695,7 @@ body.personal .post-page article blockquote {
 body.personal .post-page article strong {
   color: #a0b870;
 }
-body.personal[data-theme="light"] .post-page article strong {
+[data-theme="light"] body.personal .post-page article strong {
   color: #3a5020;
 }
 

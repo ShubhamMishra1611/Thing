@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Auth Week — OAuth2, JWT, and other ways to cure insomnia — quanta-log</title>
+  <link rel="stylesheet" href="../../assets/style.css" />
+  <style>
+    .katex-display { overflow: hidden; }
+    .callout {
+      border-left: 3px solid var(--accent, #4ade80);
+      padding: 0.75rem 1rem;
+      margin: 1.5rem 0;
+      background: var(--surface, #21262d);
+      border-radius: 0 6px 6px 0;
+      font-family: 'Geist Mono', monospace;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+  </style>
+
+  <!-- KaTeX v0.16.9 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+    onload="renderMathInElement(document.body, {
+      delimiters: [
+        {left: '$$', right: '$$', display: true},
+        {left: '$', right: '$', display: false}
+      ]
+    });"></script>
+
+  <!-- highlight.js v11.9.0 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"
+    onload="hljs.highlightAll();"></script>
+
+  <script src="../../assets/theme.js"></script>
+</head>
+<body class="post-page">
+
+  <nav>
+    <a href="/" class="logo">shubham</a>
+    <ul class="nav-right">
+      <li><a href="../index.html">posts</a></li>
+      <li><a href="/#topics">topics</a></li>
+      <li><a href="/about.html">about</a></li>
+      <li>
+        <button class="theme-toggle" onclick="toggleTheme()">
+          <svg class="theme-icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+          <svg class="theme-icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+      </li>
+    </ul>
+  </nav>
+
+  <div class="post-header">
+    <div style="display:flex; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap;">
+      <span class="tag">backend</span>
+      <span class="tag">auth</span>
+      <span class="tag">war story</span>
+    </div>
+    <h1>OAuth2, JWT, and other ways to cure Insomnia</h1>
+    <div class="post-meta">
+      <span>Mar 10 2026</span>
+      <span>·</span>
+      <span>12 min read</span>
+      <span>·</span>
+      <span>Shubham</span>
+    </div>
+  </div>
+
+  <article>
+
+    <p>
+      OHHHHHH MYYYYYY GOOOOOOOOOOOD, what a week I just lived. Yeah so basically I just
+      built a full auth system from scratch email sign-in, Google, Apple, JWT, access tokens,
+      refresh tokens, public/private keys, scoped permissions, the works and I have
+      <em>thoughts</em>. A lot of them. Chaotic ones. And I need to write them down before
+      they evaporate.
+    </p>
+
+    <p><strong>TLDR:</strong> USE FIREBASE.</p>
+
+    <h2>Okay but first what even is auth?</h2>
+
+    <p>
+      Let me just make it clear that:
+    </p>
+
+    <p>
+      <strong>Authentication</strong> is <em>who are you</em>. Are you really Shubham? Prove it.<br/>
+      <strong>Authorization</strong> is <em>what are you allowed to do</em>. Okay Shubham, you're real,
+      but can you access this document?
+    </p>
+
+    <p>
+      These two things sound similar but they're architecturally very different. Authentication
+      happens once at login. Authorization happens on <em>every single request</em>.
+      The whole system I built sits on this distinction. Keep it in your head.
+    </p>
+
+    <h2>The OAuth2 dance "Sign in with Google"</h2>
+
+    <p>
+      Okay. Sign in with Google. Looks simple from the outside button, consent screen, logged in.
+      Under the hood? Merlin's beard, there are steps.
+    </p>
+
+    <p>
+      Here's the actual flow. Claude will draw it, because he helped me when I was alone.
+    </p>
+
+    <!-- SVG 1: Full OAuth flow -->
+    <svg viewBox="0 0 700 420" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:700px;display:block;margin:2rem auto;">
+      <defs>
+        <marker id="oa1" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0,8 3,0 6" fill="var(--muted)"/>
+        </marker>
+        <marker id="oa2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0,8 3,0 6" fill="#4ade80"/>
+        </marker>
+        <marker id="oa3" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0,8 3,0 6" fill="#fb923c"/>
+        </marker>
+        <marker id="oa4" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0,8 3,0 6" fill="#60a5fa"/>
+        </marker>
+      </defs>
+      <rect width="700" height="420" rx="10" fill="var(--code-bg,#161b22)"/>
+
+      <!-- Column headers -->
+      <text x="75"  y="26" font-family="Geist Mono,monospace" font-size="10" fill="var(--muted)" text-anchor="middle">User / Browser</text>
+      <text x="270" y="26" font-family="Geist Mono,monospace" font-size="10" fill="var(--muted)" text-anchor="middle">Your Frontend</text>
+      <text x="470" y="26" font-family="Geist Mono,monospace" font-size="10" fill="#fb923c" text-anchor="middle">Google OAuth</text>
+      <text x="630" y="26" font-family="Geist Mono,monospace" font-size="10" fill="#4ade80" text-anchor="middle">Your Backend</text>
+
+      <!-- Vertical lane lines -->
+      <line x1="75"  y1="32" x2="75"  y2="408" stroke="#60a5fa" stroke-width="1" stroke-dasharray="3 3" opacity="0.4"/>
+      <line x1="270" y1="32" x2="270" y2="408" stroke="#a78bfa" stroke-width="1" stroke-dasharray="3 3" opacity="0.4"/>
+      <line x1="470" y1="32" x2="470" y2="408" stroke="#fb923c" stroke-width="1" stroke-dasharray="3 3" opacity="0.4"/>
+      <line x1="630" y1="32" x2="630" y2="408" stroke="#4ade80" stroke-width="1" stroke-dasharray="3 3" opacity="0.4"/>
+
+      <!-- Step 1: click login -->
+      <line x1="75" y1="54" x2="252" y2="54" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#oa1)"/>
+      <text x="163" y="48" font-family="Geist Mono,monospace" font-size="8" fill="var(--muted)" text-anchor="middle">① click "Sign in with Google"</text>
+
+      <!-- Step 2: frontend redirects to Google -->
+      <line x1="270" y1="78" x2="452" y2="78" stroke="#fb923c" stroke-width="1.5" marker-end="url(#oa3)"/>
+      <text x="361" y="72" font-family="Geist Mono,monospace" font-size="8" fill="#fb923c" text-anchor="middle">② redirect to Google with client_id + redirect_uri + scopes</text>
+
+      <!-- Step 3: user sees consent screen -->
+      <line x1="470" y1="102" x2="93" y2="102" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#oa1)"/>
+      <text x="280" y="96" font-family="Geist Mono,monospace" font-size="8" fill="var(--muted)" text-anchor="middle">③ consent screen shown to user</text>
+
+      <!-- Step 4: user approves -->
+      <line x1="75" y1="126" x2="452" y2="126" stroke="#fb923c" stroke-width="1.5" marker-end="url(#oa3)"/>
+      <text x="263" y="120" font-family="Geist Mono,monospace" font-size="8" fill="#fb923c" text-anchor="middle">④ user approves → Google generates a one-time code</text>
+
+      <!-- Step 5: Google redirects to callback URL with code -->
+      <line x1="470" y1="158" x2="93" y2="158" stroke="#fb923c" stroke-width="1.5" marker-end="url(#oa3)"/>
+      <rect x="120" y="164" width="290" height="18" rx="3" fill="#3d2000" stroke="#fb923c" stroke-width="1"/>
+      <text x="265" y="150" font-family="Geist Mono,monospace" font-size="8" fill="#fb923c" text-anchor="middle">⑤ redirect to YOUR callback URL → /auth/google/callback?code=xyz</text>
+      <text x="265" y="176" font-family="Geist Mono,monospace" font-size="8" fill="#fb923c" text-anchor="middle">← this is the step that gave me nightmares</text>
+
+      <!-- Step 6: frontend/backend exchanges code -->
+      <line x1="270" y1="200" x2="612" y2="200" stroke="#4ade80" stroke-width="1.5" marker-end="url(#oa2)"/>
+      <text x="441" y="194" font-family="Geist Mono,monospace" font-size="8" fill="#4ade80" text-anchor="middle">⑥ backend exchanges code for Google tokens (server-side)</text>
+
+      <!-- Step 7: backend calls Google userinfo -->
+      <line x1="630" y1="224" x2="488" y2="224" stroke="#fb923c" stroke-width="1.5" marker-end="url(#oa3)"/>
+      <line x1="470" y1="224" x2="470" y2="248" stroke="#fb923c" stroke-width="1"/>
+      <line x1="470" y1="248" x2="612" y2="248" stroke="#4ade80" stroke-width="1.5" marker-end="url(#oa2)"/>
+      <text x="550" y="218" font-family="Geist Mono,monospace" font-size="8" fill="var(--muted)" text-anchor="middle">⑦ call Google userinfo API</text>
+      <text x="550" y="244" font-family="Geist Mono,monospace" font-size="8" fill="var(--muted)" text-anchor="middle">get: email, name, google_id</text>
+
+      <!-- Step 8: backend issues its own JWT -->
+      <line x1="630" y1="280" x2="288" y2="280" stroke="#4ade80" stroke-width="1.5" marker-end="url(#oa2)"/>
+      <text x="450" y="274" font-family="Geist Mono,monospace" font-size="8" fill="#4ade80" text-anchor="middle">⑧ backend issues its OWN JWT (access + refresh)</text>
+
+      <!-- Step 9: frontend stores, uses on requests -->
+      <line x1="270" y1="310" x2="93" y2="310" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#oa1)"/>
+      <text x="170" y="304" font-family="Geist Mono,monospace" font-size="8" fill="var(--muted)" text-anchor="middle">⑨ store tokens, user is logged in</text>
+
+      <!-- Step 10: every API request -->
+      <line x1="75" y1="340" x2="612" y2="340" stroke="#60a5fa" stroke-width="1.5" marker-end="url(#oa4)"/>
+      <text x="343" y="334" font-family="Geist Mono,monospace" font-size="8" fill="#60a5fa" text-anchor="middle">⑩ every API request → Authorization: Bearer &lt;access_token&gt;</text>
+      <line x1="630" y1="354" x2="630" y2="370" stroke="#4ade80" stroke-width="1"/>
+      <text x="630" y="384" font-family="Geist Mono,monospace" font-size="8" fill="#4ade80" text-anchor="middle">verify JWT locally</text>
+      <text x="630" y="398" font-family="Geist Mono,monospace" font-size="8" fill="#4ade80" text-anchor="middle">no Google call needed</text>
+    </svg>
+
+    <p>
+      Yeah. Ten steps. You know what, the first time I read about this I was like 
+      <em>nah man, why so many steps, why can't Google just... give me the user?</em>
+      The answer comes down to one thing: the <strong>code exchange in step ⑥ happens
+      server-side</strong>, not in the browser. The browser never sees Google's tokens.
+      This matters because the browser is public anyone can look at it. Your backend
+      is private. So the sensitive Google access token lives only there.
+    </p>
+
+    <h2>The Callback URL</h2>
+
+    <p>
+      It wasted my entire afternoon.
+    </p>
+
+    <p>
+      The callback URL (step ⑤) is the URL Google redirects to after the user approves.
+      You register this URL in Google Cloud Console. Google will <em>only</em> redirect to
+      URLs you've pre-registered if there's any mismatch (different port, different path,
+      different scheme), it just rejects it. Fine. Reasonable.
+    </p>
+
+    <p>
+      Here's what got me. In Google Cloud Console, OAuth credentials are <em>typed</em>.
+      You create a credential for a specific platform: Web application, Android.
+      I had created an iOS credential. iOS credentials use a custom URI scheme like
+      <code>com.myapp:/oauth2redirect</code>. That's a deep link into a mobile app.
+    </p>
+
+    <p>
+      So when I tested on PC browser: user clicks login, gets consent screen,
+      approves... and then nothing. Blank. No redirect. No error. Just a void.
+      I'm sitting there like <em>you sure about that, Google?</em> I did everything right!
+      The user consented! Where did the redirect go?!
+    </p>
+
+    <div class="callout">
+      It went to com.myapp:/oauth2redirect. In a PC browser. Which has no app
+      to handle that URI scheme. So it just... dropped it silently. No error.
+      Just gone. Into the void.
+    </div>
+
+    <p>
+      The fix was to create a <strong>Web application</strong> credential with
+      <code>http://localhost:8000/auth/google/callback</code> registered as the
+      redirect URI. Different credential type, different client ID entirely.
+      The moment I switched instant redirect, everything worked.
+    </p>
+
+    <p>
+      And the saviour during all this debugging: <strong>OAuth Playground</strong>
+      (developers.google.com/oauthplayground). It's Google's own tool for testing
+      OAuth flows. It has its own pre-registered redirect URI so it always works
+      regardless of your Console setup. Absolute lifesaver. If you're building
+      any Google OAuth thing, keep this tab open.
+    </p>
+
+    <h2>Public and Private Keys</h2>
+
+    <p>
+      Hmm Hmm; it's important so it's here. I'll write more on the actual math sometime later. For now just look at the diagram.
+    </p>
+
+    <!-- SVG 2: Public/private key sign-verify -->
+    <svg viewBox="0 0 680 280" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:680px;display:block;margin:2rem auto;">
+      <defs>
+        <marker id="pk1" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0,8 3,0 6" fill="var(--muted)"/>
+        </marker>
+        <marker id="pk2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0,8 3,0 6" fill="#4ade80"/>
+        </marker>
+        <marker id="pk3" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0,8 3,0 6" fill="#f87171"/>
+        </marker>
+      </defs>
+      <rect width="680" height="280" rx="10" fill="var(--code-bg,#161b22)"/>
+
+      <!-- Private key box (left) -->
+      <rect x="20" y="40" width="160" height="60" rx="6" fill="#3d1515" stroke="#f87171" stroke-width="1.5"/>
+      <text x="100" y="62" font-family="Geist Mono,monospace" font-size="10" fill="#f87171" text-anchor="middle">🔑 Private Key</text>
+      <text x="100" y="78" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">lives on your server ONLY</text>
+      <text x="100" y="92" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">never shared, never public</text>
+
+      <!-- Sign action -->
+      <rect x="20" y="140" width="160" height="50" rx="6" fill="var(--surface,#21262d)" stroke="var(--border,#30363d)" stroke-width="1.5"/>
+      <text x="100" y="160" font-family="Geist Mono,monospace" font-size="10" fill="var(--fg)" text-anchor="middle">sign(payload,</text>
+      <text x="100" y="175" font-family="Geist Mono,monospace" font-size="10" fill="var(--fg)" text-anchor="middle">  private_key)</text>
+      <line x1="100" y1="101" x2="100" y2="138" stroke="#f87171" stroke-width="1.5" marker-end="url(#pk3)"/>
+
+      <!-- JWT output -->
+      <rect x="230" y="130" width="200" height="70" rx="6" fill="var(--surface,#21262d)" stroke="var(--border,#30363d)" stroke-width="1.5"/>
+      <text x="330" y="152" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">header.payload.signature</text>
+      <text x="330" y="167" font-family="Geist Mono,monospace" font-size="9" fill="#4ade80" text-anchor="middle">← signed JWT</text>
+      <text x="330" y="182" font-family="Geist Mono,monospace" font-size="8" fill="var(--muted)" text-anchor="middle">signature = proof of origin</text>
+      <line x1="181" y1="165" x2="228" y2="165" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#pk1)"/>
+
+      <!-- Public key box (right) -->
+      <rect x="490" y="40" width="170" height="60" rx="6" fill="#1d3a22" stroke="#4ade80" stroke-width="1.5"/>
+      <text x="575" y="62" font-family="Geist Mono,monospace" font-size="10" fill="#4ade80" text-anchor="middle">🔓 Public Key</text>
+      <text x="575" y="78" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">share freely anyone can have it</text>
+      <text x="575" y="92" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">derived from private key (one-way)</text>
+
+      <!-- Verify action -->
+      <rect x="490" y="140" width="170" height="50" rx="6" fill="var(--surface,#21262d)" stroke="var(--border,#30363d)" stroke-width="1.5"/>
+      <text x="575" y="160" font-family="Geist Mono,monospace" font-size="10" fill="var(--fg)" text-anchor="middle">verify(jwt,</text>
+      <text x="575" y="175" font-family="Geist Mono,monospace" font-size="10" fill="var(--fg)" text-anchor="middle">  public_key)</text>
+      <line x1="575" y1="101" x2="575" y2="138" stroke="#4ade80" stroke-width="1.5" marker-end="url(#pk2)"/>
+
+      <!-- Arrow from JWT to verify -->
+      <line x1="431" y1="165" x2="488" y2="165" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#pk1)"/>
+
+      <!-- Result -->
+      <rect x="460" y="210" width="200" height="44" rx="6" fill="#1d3a22" stroke="#4ade80" stroke-width="1"/>
+      <text x="560" y="228" font-family="Geist Mono,monospace" font-size="10" fill="#4ade80" text-anchor="middle">✓ valid trust the claims</text>
+      <text x="560" y="244" font-family="Geist Mono,monospace" font-size="8" fill="var(--muted)" text-anchor="middle">no call to auth server needed</text>
+      <line x1="575" y1="191" x2="560" y2="208" stroke="#4ade80" stroke-width="1.5" marker-end="url(#pk2)"/>
+
+      <!-- Key insight bottom left -->
+      <rect x="20" y="210" width="390" height="44" rx="6" fill="var(--surface,#21262d)" stroke="var(--border,#30363d)" stroke-width="1"/>
+      <text x="215" y="228" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">public key can verify a signature but CANNOT create one</text>
+      <text x="215" y="244" font-family="Geist Mono,monospace" font-size="9" fill="#fb923c" text-anchor="middle">verification ≠ forgery that's the whole trick</text>
+    </svg>
+
+    <p>
+      The intuition: think of it like a wax seal on a letter. The private key is your unique
+      stamp only you have it, only you can press it. The public key is how anyone can
+      <em>recognise</em> your seal as genuine. They can look at it and say "yes, Shubham sealed
+      this." But they can't forge a new seal with the same impression. Recognition ≠ forgery.
+    </p>
+
+    <p>
+      How are they derived? The private key is just a very large random number.
+      The public key is computed from it using elliptic curve multiplication
+      a mathematical operation that is easy to compute in one direction
+      (private → public) and effectively impossible to reverse (public → private).
+      You can share the public key with the entire internet and nobody learns
+      anything useful about your private key.
+    </p>
+
+    <p>
+      And here's why this is <em>actually sick</em> for our system: once I give the public key
+      to any microservice in my backend, that service can verify JWTs forever without
+      ever calling my auth server again. Zero network hops. Stateless verification.
+      That's the payoff.
+    </p>
+
+    <h2>The JWT What's Actually Inside</h2>
+
+    <p>
+      Okay real talk step ⑧ in the flow I showed earlier raised a question I had myself:
+      <em>why issue your own JWT? Google already gave you a token, why not use that?</em>
+    </p>
+
+    <p>
+      Because Google's token is Google's business. It has Google's expiry, Google's format,
+      Google's scopes. And for your own API, you want to put <em>your own claims</em>
+      in the token things like user ID in your database, user roles, subscription status,
+      whatever your system cares about. Google doesn't know any of that.
+    </p>
+
+    <p>
+      A JWT is just three base64-encoded chunks joined by dots: <code>header.payload.signature</code>.
+    </p>
+
+    <pre><code class="language-json">// Header
+{
+  "alg": "RS256",
+  "typ": "JWT"
+}
+
+// Payload (your claims readable by anyone!)
+{
+  "sub": "user_id_in_your_db",
+  "email": "shubham@example.com",
+  "roles": ["user"],
+  "iat": 1743724800,
+  "exp": 1743728400
+}
+
+// Signature: sign(base64(header) + "." + base64(payload), private_key)
+// If someone tampers with payload, signature check fails → rejected
+</code></pre>
+
+    <p>
+      Important: the payload is <em>not encrypted</em>, just encoded. Anyone can read it.
+      So don't put secrets in there.
+    </p>
+
+    <blockquote>
+      "The signature only guarantees it wasn't tampered with, not that it's hidden. Ah really, caught me off guard when I first understood this."
+    </blockquote>
+
+    <h2>Access Token + Refresh Token Why Two?</h2>
+
+    <p>
+      You sure about needing two tokens? Yes. Here's why.
+    </p>
+
+    <!-- SVG 3: Access + Refresh token lifecycle -->
+    <svg viewBox="0 0 680 240" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:680px;display:block;margin:2rem auto;">
+      <defs>
+        <marker id="rf1" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0,8 3,0 6" fill="var(--muted)"/>
+        </marker>
+        <marker id="rf2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0,8 3,0 6" fill="#4ade80"/>
+        </marker>
+        <marker id="rf3" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0,8 3,0 6" fill="#fb923c"/>
+        </marker>
+      </defs>
+      <rect width="680" height="240" rx="10" fill="var(--code-bg,#161b22)"/>
+
+      <!-- Access token -->
+      <rect x="20" y="30" width="200" height="70" rx="6" fill="#1a2e4a" stroke="#60a5fa" stroke-width="1.5"/>
+      <text x="120" y="52" font-family="Geist Mono,monospace" font-size="10" fill="#60a5fa" text-anchor="middle">Access Token</text>
+      <text x="120" y="68" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">short-lived: 15–60 min</text>
+      <text x="120" y="84" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">sent with every API request</text>
+
+      <!-- Refresh token -->
+      <rect x="20" y="130" width="200" height="70" rx="6" fill="#1d3a22" stroke="#4ade80" stroke-width="1.5"/>
+      <text x="120" y="152" font-family="Geist Mono,monospace" font-size="10" fill="#4ade80" text-anchor="middle">Refresh Token</text>
+      <text x="120" y="168" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">long-lived: 7–30 days</text>
+      <text x="120" y="184" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">stored securely, rarely sent</text>
+
+      <!-- API request flow -->
+      <line x1="221" y1="65" x2="299" y2="65" stroke="#60a5fa" stroke-width="1.5" marker-end="url(#rf1)"/>
+      <rect x="300" y="42" width="200" height="46" rx="6" fill="var(--surface,#21262d)" stroke="var(--border,#30363d)" stroke-width="1.5"/>
+      <text x="400" y="60" font-family="Geist Mono,monospace" font-size="10" fill="var(--fg)" text-anchor="middle">API Request</text>
+      <text x="400" y="76" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">Authorization: Bearer &lt;token&gt;</text>
+
+      <!-- Expiry -->
+      <rect x="520" y="42" width="140" height="46" rx="6" fill="#3d1515" stroke="#f87171" stroke-width="1"/>
+      <text x="590" y="60" font-family="Geist Mono,monospace" font-size="9" fill="#f87171" text-anchor="middle">401 Unauthorized</text>
+      <text x="590" y="76" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">access token expired</text>
+      <line x1="501" y1="65" x2="518" y2="65" stroke="#f87171" stroke-width="1.5" marker-end="url(#rf3)"/>
+
+      <!-- Refresh flow -->
+      <line x1="221" y1="165" x2="299" y2="165" stroke="#4ade80" stroke-width="1.5" marker-end="url(#rf2)"/>
+      <rect x="300" y="142" width="200" height="46" rx="6" fill="var(--surface,#21262d)" stroke="#4ade80" stroke-width="1.5"/>
+      <text x="400" y="160" font-family="Geist Mono,monospace" font-size="10" fill="#4ade80" text-anchor="middle">POST /auth/refresh</text>
+      <text x="400" y="170" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">send refresh token →</text>
+      <text x="400" y="182" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">get new access token</text>
+
+      <!-- Connection from expired to refresh -->
+      <line x1="590" y1="89" x2="590" y2="115" stroke="#f87171" stroke-width="1.5"/>
+      <line x1="590" y1="115" x2="400" y2="115" stroke="#f87171" stroke-width="1.5"/>
+      <line x1="400" y1="115" x2="400" y2="140" stroke="#4ade80" stroke-width="1.5" marker-end="url(#rf2)"/>
+      <text x="500" y="110" font-family="Geist Mono,monospace" font-size="8" fill="var(--muted)" text-anchor="middle">client sees 401 → silently refresh</text>
+
+      <!-- Why two tokens note -->
+      <text x="340" y="216" font-family="Geist Mono,monospace" font-size="8" fill="var(--muted)" text-anchor="middle">short expiry = if access token leaks, damage window is tiny</text>
+      <text x="340" y="230" font-family="Geist Mono,monospace" font-size="8" fill="var(--muted)" text-anchor="middle">refresh token is rarely sent = much harder to steal</text>
+    </svg>
+
+    <p>
+      The reason for two tokens is a security trade-off. If the access token gets
+      stolen somehow (network log, browser cache, whatever), it expires in 15 minutes.
+      Damage contained. The refresh token is long-lived but it's only ever sent to
+      one specific endpoint (<code>/auth/refresh</code>), stored carefully, and the client
+      silently swaps it when access tokens expire user never notices.
+    </p>
+
+    <h2>The <code>get_user_auth</code> Pattern</h2>
+
+    <p>
+      Ok ok ok this is my favourite part to talk about because it's the bit that made
+      the whole system feel <em>clean</em>. Every API endpoint in my backend depends on
+      a function I called <code>get_user_auth</code>. It does one thing: verify the JWT
+      from the request header and return the user. If it fails expired token, tampered
+      payload, missing header it raises a 401 immediately. The endpoint never runs.
+    </p>
+
+    <!-- SVG 4: get_user_auth guard pattern -->
+    <svg viewBox="0 0 680 220" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:680px;display:block;margin:2rem auto;">
+      <defs>
+        <marker id="ga1" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0,8 3,0 6" fill="var(--muted)"/>
+        </marker>
+        <marker id="ga2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0,8 3,0 6" fill="#4ade80"/>
+        </marker>
+        <marker id="ga3" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0,8 3,0 6" fill="#f87171"/>
+        </marker>
+      </defs>
+      <rect width="680" height="220" rx="10" fill="var(--code-bg,#161b22)"/>
+
+      <!-- Incoming request -->
+      <rect x="20" y="80" width="120" height="50" rx="5" fill="var(--surface,#21262d)" stroke="var(--border,#30363d)" stroke-width="1.5"/>
+      <text x="80" y="100" font-family="Geist Mono,monospace" font-size="10" fill="var(--fg)" text-anchor="middle">API Request</text>
+      <text x="80" y="115" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">+ Bearer token</text>
+
+      <line x1="141" y1="105" x2="179" y2="105" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ga1)"/>
+
+      <!-- get_user_auth -->
+      <rect x="180" y="70" width="160" height="70" rx="5" fill="var(--surface,#21262d)" stroke="#fb923c" stroke-width="2"/>
+      <text x="260" y="98" font-family="Geist Mono,monospace" font-size="10" fill="#fb923c" text-anchor="middle">get_user_auth()</text>
+      <text x="260" y="113" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">verify JWT signature</text>
+      <text x="260" y="127" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">check expiry + claims</text>
+
+      <!-- Valid path -->
+      <line x1="341" y1="95" x2="409" y2="95" stroke="#4ade80" stroke-width="1.5" marker-end="url(#ga2)"/>
+      <text x="375" y="88" font-family="Geist Mono,monospace" font-size="8" fill="#4ade80" text-anchor="middle">valid</text>
+      <rect x="410" y="70" width="150" height="50" rx="5" fill="#1d3a22" stroke="#4ade80" stroke-width="1.5"/>
+      <text x="485" y="90" font-family="Geist Mono,monospace" font-size="10" fill="#4ade80" text-anchor="middle">endpoint runs</text>
+      <text x="485" y="106" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">receives clean user object</text>
+
+      <rect x="580" y="70" width="80" height="50" rx="5" fill="#1d3a22" stroke="#4ade80" stroke-width="1"/>
+      <text x="620" y="93" font-family="Geist Mono,monospace" font-size="10" fill="#4ade80" text-anchor="middle">200 OK</text>
+      <line x1="561" y1="95" x2="578" y2="95" stroke="#4ade80" stroke-width="1.5" marker-end="url(#ga2)"/>
+
+      <!-- Invalid path -->
+      <line x1="260" y1="141" x2="260" y2="165" stroke="#f87171" stroke-width="1.5" marker-end="url(#ga3)"/>
+      <text x="271" y="158" font-family="Geist Mono,monospace" font-size="8" fill="#f87171">invalid / expired</text>
+      <rect x="180" y="166" width="160" height="36" rx="5" fill="#3d1515" stroke="#f87171" stroke-width="1.5"/>
+      <text x="260" y="184" font-family="Geist Mono,monospace" font-size="10" fill="#f87171" text-anchor="middle">raise 401</text>
+      <text x="260" y="197" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">endpoint never runs</text>
+    </svg>
+
+    <pre><code class="language-python">async def get_user_auth(token: str = Depends(oauth2_scheme)) -> User:
+    try:
+        payload = jwt.decode(token, PUBLIC_KEY, algorithms=["RS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+
+    user = await db.get_user(user_id)
+    if not user:
+        raise credentials_exception
+    return user
+
+
+# Every endpoint that needs auth:
+@router.get("/documents/{doc_id}")
+async def get_document(doc_id: str, user: User = Depends(get_user_auth)):
+    # user is guaranteed valid here. No auth logic in here.
+    return await db.get_doc(doc_id, owner=user.id)
+</code></pre>
+
+    <p>
+      simple right? yeah because its simple, there is nothing to smile about.
+    </p>
+
+    <h2>Scoped Permissions "I Only Need Docs"</h2>
+
+    <p>
+      Last thing, and this one is conceptually elegant once you see it.
+    </p>
+
+    <p>
+      In my system, certain flows require specific Google permissions not just identity,
+      but actual capability. Like if a feature needs to read the user's Google Docs,
+      I need the <code>https://www.googleapis.com/auth/drive.readonly</code> scope.
+      The user needs to grant that specifically.
+    </p>
+
+    <p>
+      So the flow is: frontend launches Google OAuth with the exact scopes that
+      particular feature needs. User sees a consent screen that says specifically
+      "This app wants to read your Google Drive." User approves. Google gives back
+      tokens with exactly those capabilities. Backend stores them and uses them
+      only for that feature.
+    </p>
+
+    <pre><code class="language-python">SCOPES = {
+    "identity":    ["openid", "email", "profile"],
+    "docs_read":   ["openid", "email", "https://www.googleapis.com/auth/drive.readonly"],
+    "docs_write":  ["openid", "email", "https://www.googleapis.com/auth/drive"],
+}
+
+def get_google_auth_url(scope_key: str, state: str) -> str:
+    scopes = SCOPES[scope_key]
+    return oauth.google.authorization_url(
+        scope=scopes,
+        redirect_uri=CALLBACK_URL,
+        state=state,
+        access_type="offline",  # get refresh token
+    )
+</code></pre>
+
+    <p>
+      The reason you do it this way ask for only what you need is both
+      security practice and user trust. Nobody's granting "full Google Drive access"
+      to an app they just found.
+    </p>
+
+    <blockquote>
+      "Honestly I never even pay attention to what permission I am giving I just press buttons like dude just get things done, you can never be me."
+    </blockquote>
+
+    <h2>okay I need to stop writing</h2>
+
+    <p>
+      I have been at this for way too long. My brain is cooked. I want to eat Boss Burrito from Taco Bells, damn man. Should I ask AI to remove these words, nah man, no one gonna read this, nothing matteress, who chairs.
+    </p>
+
+  </article>
+
+  <div class="post-nav">
+    <a href="../index.html" class="text-link">← all posts</a>
+  </div>
+
+  <footer>
+    <span style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">© 2026 Shubham Mishra</span>
+    <div style="display:flex; gap:1.5rem;">
+      <a href="https://github.com/ShubhamMishra1611" style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">github</a>
+      <a href="https://twitter.com/" style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">twitter</a>
+      <a href="mailto:smishraonline@gmail.com?subject=%5Bblog%5D%20hi%20Shubham!" style="font-family:'Geist Mono',monospace; font-size:0.72rem; color:var(--muted);">share your thoughts</a>
+    </div>
+  </footer>
+
+</body>
+</html>
