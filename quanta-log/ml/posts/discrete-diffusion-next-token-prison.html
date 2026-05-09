@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Next-Token Prison: Why I'm Breaking Out with Discrete Diffusion — quanta-log</title>
+  <link rel="stylesheet" href="../../assets/style.css" />
+
+  <!-- KaTeX v0.16.9 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+    onload="renderMathInElement(document.body, {
+      delimiters: [
+        {left: '$$', right: '$$', display: true},
+        {left: '$', right: '$', display: false}
+      ]
+    });"></script>
+
+  <!-- highlight.js -->
+  <link id="hljs-theme" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"
+    onload="hljs.highlightAll();"></script>
+
+  <script src="../../assets/theme.js"></script>
+
+  <style>
+    .callout {
+      border-left: 3px solid var(--green);
+      padding: 0.75rem 1rem;
+      margin: 1.5rem 0;
+      background: var(--surface);
+      border-radius: 0 6px 6px 0;
+      font-family: 'Geist Mono', monospace;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+    .callout.warn {
+      border-left-color: #fb923c;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: 'Geist Mono', monospace;
+      font-size: 0.78rem;
+      margin: 1.5rem 0;
+    }
+    th {
+      text-align: left;
+      color: var(--subtle);
+      border-bottom: 1px solid var(--border);
+      padding: 0.5rem 0.8rem;
+    }
+    td {
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      padding: 0.45rem 0.8rem;
+    }
+    td:first-child { color: var(--text); }
+    tr:last-child td { border-bottom: none; }
+    .highlight-row td { color: var(--green); }
+  </style>
+</head>
+<body class="post-page">
+
+<nav>
+  <a href="/" class="logo">shubham</a>
+  <ul class="nav-right">
+    <li><a href="../index.html">posts</a></li>
+    <li>
+      <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+        <svg class="theme-icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="5"/>
+          <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+          <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+        <svg class="theme-icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </button>
+    </li>
+  </ul>
+</nav>
+
+<div class="post-header">
+  <div style="display:flex; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap;">
+    <span class="tag">diffusion</span>
+    <span class="tag">LLM internals</span>
+    <span class="tag">paper breakdown</span>
+    <span class="tag">war story</span>
+  </div>
+  <h1>The Next-Token Prison: Why I'm Breaking Out with Discrete Diffusion (DRAFT ONLY STILL UNDERSTANDING ...)</h1>
+  <div class="post-meta">
+    <span>May 2026</span>
+    <span>·</span>
+    <span>15 min read</span>
+    <span>·</span>
+    <span>Shubham</span>
+  </div>
+</div>
+
+<article>
+
+  <p>
+    I am actually losing my mind. If I have to sit here and watch one more LLM spit out text
+    <em>one. token. at. a. time.</em> like some sort of caffeinated Victorian typewriter, I'm going to throw
+    my entire rack of A100s out the window. We have spent years trapped in the autoregressive prison,
+    gaslighting ourselves into believing that predicting $x_2$ conditioned on $x_1$ is the only way to
+    build a brain. It isn't — it's a massive architectural bottleneck that's starting to crack.
+  </p>
+
+  <p>
+    It's not just about speed (though watching a 70B model finish a sentence is a special kind of hell).
+    It's the <strong>Reversal Curse</strong>. You can teach a model that Valentina Tereshkova was the
+    first woman in space, but ask it "Who was the first woman in space?" and it stares at you with the
+    blank digital soul of a brick. And the self-correction failure? Final straw. Research proves that when
+    you prompt an AR model to <em>review</em> its own answer, performance across all benchmarks actually
+    <em>drops</em>. Once a bad token enters the sequence, it's a death spiral. The error compounds.
+    We need to break the loop.
+  </p>
+
+  <p><strong>TLDR: PARALLELISM OR BUST.</strong> Diffusion is the future. The training variance is currently a nightmare, but people are solving it — fast.</p>
+
+  <h2>Why AR is a Beautiful Trap</h2>
+
+  <p>
+    The mechanics are genuinely elegant. An autoregressive model defines:
+  </p>
+
+  $$\log p_\theta(x) = \sum_{\ell=1}^{L} \log p_\theta(x_\ell \mid x_{<\ell})$$
+
+  <p>
+    Every token conditions on everything before it. This is why we have the KV cache — an absolute
+    engineering miracle that only exists to compensate for the fact that our architecture is
+    fundamentally, hilariously sequential. The cost? <strong>L steps to generate L tokens. Always.</strong>
+    No exceptions. The chain is the chain.
+  </p>
+
+  <p>
+    The deeper problem is <em>compound error</em>. Imagine tightrope walking where one slip at token five
+    doesn't just put you slightly off — you're in freefall. The model only sees the past it just generated.
+    It cannot look ahead. It cannot fix a mistake once the token is sampled. It is architecturally
+    incapable of self-repair.
+  </p>
+
+  <h2>Enter Discrete Diffusion: The Zapping Method</h2>
+
+  <p>
+    Diffusion models don't build sequences brick by brick. They start with noise and
+    <em>denoise</em> toward coherence. For images this means Gaussian blur. For text — we can't
+    blur a token; "cat" has no meaningful midpoint toward "dog." So we use something called
+    <strong>absorbing state diffusion</strong>, introduced in D3PM (Austin et al., 2021).
+  </p>
+
+  <p>
+    The forward process "zaps" tokens into a special <code>[MASK]</code> state with probability $\beta_t$
+    at each step. Formally, for a token $x_\ell$, the per-step transition is:
+  </p>
+
+  $$q(x_t^\ell \mid x_{t-1}^\ell) = \text{Cat}(x_t^\ell;\; x_{t-1}^\ell Q_t)$$
+
+  <p>
+    where $Q_t \in \mathbb{R}^{V \times V}$ is the <strong>transition matrix</strong> — the thing that
+    determines what each token is allowed to become. For absorbing state diffusion, this matrix has a
+    specific form: with probability $1 - \beta_t$ a token stays put; with probability $\beta_t$ it
+    becomes <code>[MASK]</code> and <em>stays there forever</em>. Once masked, always masked.
+  </p>
+
+  <p>
+    There are actually three different flavors of transition matrix worth knowing about:
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Qt form</th>
+        <th>Stationary dist.</th>
+        <th>Works best for</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Uniform</td>
+        <td>$(1{-}\beta_t)I + \beta_t/K \cdot \mathbf{1}\mathbf{1}^T$</td>
+        <td>Uniform over vocab</td>
+        <td>Baseline, not great</td>
+      </tr>
+      <tr class="highlight-row">
+        <td>Absorbing</td>
+        <td>Stay or go to [MASK]</td>
+        <td>All mass on [MASK]</td>
+        <td>Text — by far best</td>
+      </tr>
+      <tr>
+        <td>Discretized Gaussian</td>
+        <td>Transitions prefer similar states</td>
+        <td>Uniform</td>
+        <td>Ordinal data, images</td>
+      </tr>
+      <tr>
+        <td>Embedding distance</td>
+        <td>Transitions prefer semantically close tokens</td>
+        <td>Uniform</td>
+        <td>Promising but underperforms</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    The absorbing one wins on text — by a lot, as we'll see in the numbers. The embedding-distance
+    matrix sounds intuitive (similar tokens should corrupt into each other!) but it turned out to be a
+    <em>surprising negative result</em> — word embedding similarity isn't a meaningful kind of locality
+    in a diffusion process. Sometimes the clean intuition doesn't survive contact with the data.
+  </p>
+
+  <p>
+    The beautiful thing about absorbing diffusion: the cumulative $t$-step marginal is tractable in
+    closed form. You don't have to simulate all $t$ steps to know what a token looks like at time $t$:
+  </p>
+
+  $$q(x_t \mid x_0) = \text{Cat}(x_t;\; x_0 \bar{Q}_t), \quad \bar{Q}_t = Q_1 Q_2 \cdots Q_t$$
+
+  <p>
+    And the reverse posterior — the thing the model actually needs to learn from — is also tractable:
+  </p>
+
+  $$q(x_{t-1} \mid x_t, x_0) = \text{Cat}\!\left(x_{t-1};\; \frac{x_t Q_t^\top \odot\, x_0 \bar{Q}_{t-1}}{x_0 \bar{Q}_t \, x_t^\top}\right)$$
+
+  <p>
+    This is the key equation. If a token is already revealed (not masked), the posterior is a
+    delta function — keep it. If it's masked, the model has to predict what the original token was.
+    That's the whole game: a transformer trained to be a world-class guesser of hidden information,
+    looking at the <em>entire sequence</em> at once, bidirectionally.
+  </p>
+
+  <!-- SVG: Forward vs Reverse process -->
+  <svg viewBox="0 0 680 200" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:680px;display:block;margin:2rem auto;">
+    <defs>
+      <marker id="dd1" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+        <polygon points="0 0,8 3,0 6" fill="#fb923c"/>
+      </marker>
+      <marker id="dd2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+        <polygon points="0 0,8 3,0 6" fill="#4ade80"/>
+      </marker>
+    </defs>
+    <rect width="680" height="200" rx="10" fill="var(--code-bg,#161614)"/>
+
+    <!-- Labels -->
+    <text x="340" y="22" font-family="Geist Mono,monospace" font-size="9" fill="#fb923c" text-anchor="middle">Forward: q(xt | x0) — zap tokens into [MASK]</text>
+    <text x="340" y="110" font-family="Geist Mono,monospace" font-size="9" fill="#4ade80" text-anchor="middle">Reverse: pθ(xs | xt) — denoise in parallel</text>
+
+    <!-- Forward process tokens -->
+    <rect x="20" y="32" width="90" height="36" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+    <text x="65" y="53" font-family="Geist Mono,monospace" font-size="8" fill="var(--text)" text-anchor="middle">[The][quick][brown][fox]</text>
+    <text x="65" y="64" font-family="Geist Mono,monospace" font-size="7" fill="var(--muted)" text-anchor="middle">t = 0 (clean)</text>
+
+    <line x1="111" y1="50" x2="159" y2="50" stroke="#fb923c" stroke-width="1.5" marker-end="url(#dd1)"/>
+
+    <rect x="160" y="32" width="90" height="36" rx="4" fill="var(--surface)" stroke="#fb923c" stroke-width="1"/>
+    <text x="205" y="53" font-family="Geist Mono,monospace" font-size="8" fill="#fb923c" text-anchor="middle">[The][M][M][fox]</text>
+    <text x="205" y="64" font-family="Geist Mono,monospace" font-size="7" fill="var(--muted)" text-anchor="middle">t = 0.3</text>
+
+    <line x1="251" y1="50" x2="299" y2="50" stroke="#fb923c" stroke-width="1.5" marker-end="url(#dd1)"/>
+
+    <rect x="300" y="32" width="90" height="36" rx="4" fill="var(--surface)" stroke="#fb923c" stroke-width="1"/>
+    <text x="345" y="53" font-family="Geist Mono,monospace" font-size="8" fill="#fb923c" text-anchor="middle">[M][M][M][fox]</text>
+    <text x="345" y="64" font-family="Geist Mono,monospace" font-size="7" fill="var(--muted)" text-anchor="middle">t = 0.6</text>
+
+    <line x1="391" y1="50" x2="439" y2="50" stroke="#fb923c" stroke-width="1.5" marker-end="url(#dd1)"/>
+
+    <rect x="440" y="32" width="90" height="36" rx="4" fill="var(--surface)" stroke="#fb923c" stroke-width="1"/>
+    <text x="485" y="53" font-family="Geist Mono,monospace" font-size="8" fill="#fb923c" text-anchor="middle">[M][M][M][M]</text>
+    <text x="485" y="64" font-family="Geist Mono,monospace" font-size="7" fill="var(--muted)" text-anchor="middle">t = 1.0 (all masked)</text>
+
+    <!-- Reverse process tokens -->
+    <rect x="440" y="120" width="90" height="36" rx="4" fill="var(--surface)" stroke="#4ade80" stroke-width="1"/>
+    <text x="485" y="141" font-family="Geist Mono,monospace" font-size="8" fill="#4ade80" text-anchor="middle">[M][M][M][M]</text>
+    <text x="485" y="152" font-family="Geist Mono,monospace" font-size="7" fill="var(--muted)" text-anchor="middle">start from noise</text>
+
+    <line x1="439" y1="138" x2="391" y2="138" stroke="#4ade80" stroke-width="1.5" marker-end="url(#dd2)"/>
+
+    <rect x="300" y="120" width="90" height="36" rx="4" fill="var(--surface)" stroke="#4ade80" stroke-width="1"/>
+    <text x="345" y="141" font-family="Geist Mono,monospace" font-size="8" fill="#4ade80" text-anchor="middle">[The][M][brown][M]</text>
+    <text x="345" y="152" font-family="Geist Mono,monospace" font-size="7" fill="var(--muted)" text-anchor="middle">parallel unmask</text>
+
+    <line x1="299" y1="138" x2="251" y2="138" stroke="#4ade80" stroke-width="1.5" marker-end="url(#dd2)"/>
+
+    <rect x="160" y="120" width="90" height="36" rx="4" fill="var(--surface)" stroke="#4ade80" stroke-width="1"/>
+    <text x="205" y="141" font-family="Geist Mono,monospace" font-size="8" fill="#4ade80" text-anchor="middle">[The][quick][brown][M]</text>
+    <text x="205" y="152" font-family="Geist Mono,monospace" font-size="7" fill="var(--muted)" text-anchor="middle">parallel unmask</text>
+
+    <line x1="159" y1="138" x2="111" y2="138" stroke="#4ade80" stroke-width="1.5" marker-end="url(#dd2)"/>
+
+    <rect x="20" y="120" width="90" height="36" rx="4" fill="var(--surface)" stroke="var(--border)" stroke-width="1"/>
+    <text x="65" y="141" font-family="Geist Mono,monospace" font-size="8" fill="var(--text)" text-anchor="middle">[The][quick][brown][fox]</text>
+    <text x="65" y="152" font-family="Geist Mono,monospace" font-size="7" fill="var(--muted)" text-anchor="middle">reconstructed</text>
+
+    <!-- "sees whole sequence" note -->
+    <text x="340" y="187" font-family="Geist Mono,monospace" font-size="8" fill="var(--muted)" text-anchor="middle">the model sees the ENTIRE sequence at each denoising step — not just what came before</text>
+  </svg>
+
+  <h2>A Beautiful Thing I Didn't Expect: BERT is a Diffusion Model</h2>
+
+  <p>
+    Okay this is the bit that genuinely broke my brain a little. It turns out BERT — the model from 2018
+    that everyone already forgot about — is literally a one-step D3PM. If you construct a transition
+    matrix that masks 15% of tokens (some to <code>[MASK]</code>, some randomly, like BERT's training
+    scheme), your D3PM training objective becomes:
+  </p>
+
+  $$\mathcal{L}_{vb} - \mathcal{L}_T = -\mathbb{E}_{q(x_1|x_0)}[\log p_\theta(x_0 \mid x_1)] = \mathcal{L}_{\text{BERT}}$$
+
+  <p>
+    BERT was running one denoising step. One very specific step. D3PM runs a whole chain of them.
+    And here's the even wilder one: <em>autoregressive models are also diffusion models</em>. If you
+    construct a forward process that deterministically masks tokens one by one from right to left
+    — token $N$ first, then $N-1$, then $N-2$ — the KL divergence at each step reduces to
+    exactly the standard cross-entropy loss for an autoregressive model. AR is just a very specific,
+    deterministic, sequential diffusion process. Mind, meet floor.
+  </p>
+
+  <h2>The Training War Story: Variance is the Devil</h2>
+
+  <p>
+    Here's where the BD3-LM paper (Arriola et al., ICLR 2025 Oral) earns its keep. Training discrete
+    diffusion models is like riding a unicycle on a tightrope during an earthquake, and the reason
+    comes down to one ugly fact about gradients.
+  </p>
+
+  <p>
+    The training objective for masked diffusion is the NELBO — the Negative Evidence Lower Bound.
+    For the masked BD3-LM case it simplifies to:
+  </p>
+
+  $$\mathcal{L}_{BD}(x;\theta) := \sum_{b=1}^{B} \mathbb{E}_{t \sim [0,1]} \mathbb{E}_q \left[ \frac{\alpha_t'}{ 1 - \alpha_t} \log p_\theta(x^b \mid x^b_t, x^{<b}) \right]$$
+
+  <p>
+    where $\alpha_t \in [0,1]$ is a monotonically decreasing function with $\alpha_0 = 1$ (no masking)
+    and $\alpha_1 = 0$ (all masked), and $\alpha_t'$ is its instantaneous rate of change. The
+    $\frac{\alpha_t'}{1 - \alpha_t}$ term is the importance weight — it reweights each timestep.
+  </p>
+
+  <p>
+    The problem is not the objective itself. The problem is how you estimate it during training.
+  </p>
+
+  <div class="callout warn">
+    Under a linear noise schedule, $\mathbb{E}_t[q(x_t^\ell = \text{MASK} \mid x_0^\ell)] = 0.5$.
+    So on average, <strong>half your tokens are masked</strong>. You're only computing loss on the
+    unmasked tokens. That means you're training on 2× fewer gradient-contributing tokens compared
+    to an AR model. Higher variance. Slower convergence. This is why diffusion training curves
+    look like a heart attack while the AR curve is a smooth slide.
+  </div>
+
+  <p>
+    They actually measured this. Training the block diffusion model with the standard NELBO gave
+    a gradient variance of <strong>1.52</strong>. After tuning the noise schedule to eliminate extreme
+    mask rates, variance dropped to <strong>0.11</strong>. That's a 14× reduction. And the perplexity
+    gap to AR? Gone entirely at block size $L' = 1$ (where both objectives are equivalent in
+    expectation).
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Model</th>
+        <th>LM1B Perplexity ↓</th>
+        <th>Note</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>AR Transformer</td>
+        <td>22.88</td>
+        <td>Ceiling</td>
+      </tr>
+      <tr>
+        <td>BD3-LM L'=1, standard NELBO</td>
+        <td>≤ 25.56</td>
+        <td>Equivalent objective, worse result</td>
+      </tr>
+      <tr class="highlight-row">
+        <td>BD3-LM L'=1, tuned schedule</td>
+        <td>22.88</td>
+        <td>Matches AR exactly</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    The two-point perplexity gap between "equivalent objective" and "equivalent result" is entirely
+    explained by gradient variance. Not architecture. Not model capacity. <em>Variance in the
+    gradient estimator.</em> This is one of those findings that sounds obvious in retrospect and
+    completely wasn't.
+  </p>
+
+  <h2>The Fix: Clipped Noise Schedules</h2>
+
+  <p>
+    The insight is: extreme mask rates are useless for learning. If you mask almost nothing, the model
+    barely has to work — trivially easy. If you mask everything, the optimal reconstruction is just
+    the token marginals — also trivially easy. Both extremes contribute noise to gradients without
+    contributing signal to learning.
+  </p>
+
+  <p>
+    The fix is a class of "clipped" schedules that sample mask rates uniformly from a range $[\beta, \omega]$,
+    where $0 \le \beta < \omega \le 1$, cutting off both extremes:
+  </p>
+
+  $$1 - \alpha_t \sim U[\beta, \omega]$$
+
+  <p>
+    And the optimal $\beta, \omega$ <em>depends on block size</em>. They don't hand-tune this —
+    they run a grid search every ~5K training steps to minimize the variance of the NELBO estimator
+    directly. Here's what that looks like across block sizes:
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Block size L'</th>
+        <th>Best schedule</th>
+        <th>Var. NELBO</th>
+        <th>Test PPL</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>128</td>
+        <td>U[0, 0.5]</td>
+        <td>1.03</td>
+        <td>31.72</td>
+      </tr>
+      <tr>
+        <td>16</td>
+        <td>U[0.3, 0.8]</td>
+        <td>3.62</td>
+        <td>31.19</td>
+      </tr>
+      <tr class="highlight-row">
+        <td>4</td>
+        <td>U[0.5, 1]</td>
+        <td>8.28</td>
+        <td>29.16</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Lower variance tracks lower perplexity. The correlation is strong enough that they use NELBO
+    variance as a cheap proxy for what schedule to use — no expensive PPL evaluations needed during
+    the search. Smart.
+  </p>
+
+  <h2>Block Diffusion: The Hybrid We Actually Deserve</h2>
+
+  <p>
+    Okay ok ok. This is the part that made everything feel like it clicked.
+  </p>
+
+  <p>
+    The problem with standard discrete diffusion for text: it generates fixed-length sequences only.
+    You pick a length $L$ at training time and that's your ceiling. Also: no KV caching, because the
+    model is bidirectional. Every denoising step needs to look at the whole sequence, including the
+    part you haven't generated yet. You can't cache anything because everything is conditioned on
+    everything else.
+  </p>
+
+  <p>
+    BD3-LMs fix this by being <em>autoregressive over blocks</em> but <em>diffusion within each block</em>.
+    The likelihood factorizes as:
+  </p>
+
+  $$\log p_\theta(x) = \sum_{b=1}^{B} \log p_\theta(x^b \mid x^{<b})$$
+
+  <p>
+    Each block $x^b$ contains $L'$ tokens. Each conditional $p_\theta(x^b \mid x^{<b})$ is modeled
+    with discrete diffusion. The model is a transformer with a <strong>block-causal attention mask</strong>:
+    tokens in block $b$ attend to all tokens in blocks $1$ to $b$, but not blocks $b+1$ onward.
+  </p>
+
+  <p>
+    And here's the KV caching part, spelled out in the paper's notation:
+  </p>
+
+  $$x^b_{\text{logits}},\; K^b,\; V^b \;\leftarrow\; x^b_\theta(x^b_t,\; K^{1:b-1},\; V^{1:b-1})$$
+
+  <p>
+    When sampling block $b$, you pass in the cached keys and values from all previous blocks instead
+    of recomputing them. Exactly like AR. The innovation is that <em>within</em> block $b$, you're
+    doing parallel diffusion sampling — all $L'$ tokens simultaneously, conditioned on the clean,
+    already-generated $x^{<b}$.
+  </p>
+
+  <!-- SVG: Block Diffusion generation -->
+  <svg viewBox="0 0 680 200" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:680px;display:block;margin:2rem auto;">
+    <defs>
+      <marker id="bd1" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+        <polygon points="0 0,8 3,0 6" fill="#4ade80"/>
+      </marker>
+      <marker id="bd2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+        <polygon points="0 0,8 3,0 6" fill="#60a5fa"/>
+      </marker>
+    </defs>
+    <rect width="680" height="200" rx="10" fill="var(--code-bg,#161614)"/>
+
+    <text x="340" y="20" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)" text-anchor="middle">Block Diffusion: AR over blocks, parallel diffusion within each block</text>
+
+    <!-- Block 1 -->
+    <rect x="20" y="36" width="140" height="60" rx="5" fill="#1d3a22" stroke="#4ade80" stroke-width="1.5"/>
+    <text x="90" y="56" font-family="Geist Mono,monospace" font-size="9" fill="#4ade80" text-anchor="middle">Block 1 (clean)</text>
+    <text x="90" y="72" font-family="Geist Mono,monospace" font-size="8" fill="var(--muted)" text-anchor="middle">[On][September]</text>
+    <text x="90" y="84" font-family="Geist Mono,monospace" font-size="8" fill="var(--muted)" text-anchor="middle">[17][,]</text>
+    <text x="90" y="112" font-family="Geist Mono,monospace" font-size="7" fill="#4ade80" text-anchor="middle">KV cached → K1, V1</text>
+
+    <line x1="161" y1="66" x2="199" y2="66" stroke="#60a5fa" stroke-width="1.5" marker-end="url(#bd2)"/>
+
+    <!-- Block 2 being denoised -->
+    <rect x="200" y="36" width="140" height="60" rx="5" fill="#1a2e4a" stroke="#60a5fa" stroke-width="1.5"/>
+    <text x="270" y="56" font-family="Geist Mono,monospace" font-size="9" fill="#60a5fa" text-anchor="middle">Block 2 (denoising)</text>
+    <text x="270" y="72" font-family="Geist Mono,monospace" font-size="8" fill="#60a5fa" text-anchor="middle">[M][M][M][M]</text>
+    <text x="270" y="84" font-family="Geist Mono,monospace" font-size="8" fill="#4ade80" text-anchor="middle">→ [2016][we][will][be]</text>
+    <text x="270" y="112" font-family="Geist Mono,monospace" font-size="7" fill="var(--muted)" text-anchor="middle">all 4 tokens in parallel, using K1,V1</text>
+
+    <line x1="341" y1="66" x2="379" y2="66" stroke="#60a5fa" stroke-width="1.5" marker-end="url(#bd2)"/>
+
+    <!-- Block 3 -->
+    <rect x="380" y="36" width="140" height="60" rx="5" fill="#1a2e4a" stroke="#60a5fa" stroke-width="1.5"/>
+    <text x="450" y="56" font-family="Geist Mono,monospace" font-size="9" fill="#60a5fa" text-anchor="middle">Block 3 (denoising)</text>
+    <text x="450" y="72" font-family="Geist Mono,monospace" font-size="8" fill="#60a5fa" text-anchor="middle">[M][M][M][M]</text>
+    <text x="450" y="84" font-family="Geist Mono,monospace" font-size="8" fill="#4ade80" text-anchor="middle">→ [giving][the][beta][release]</text>
+    <text x="450" y="112" font-family="Geist Mono,monospace" font-size="7" fill="var(--muted)" text-anchor="middle">parallel, using K1,V1,K2,V2</text>
+
+    <text x="545" y="66" font-family="Geist Mono,monospace" font-size="9" fill="var(--muted)">... →</text>
+
+    <!-- Legend -->
+    <rect x="20" y="145" width="12" height="12" rx="2" fill="#4ade80" opacity="0.3" stroke="#4ade80"/>
+    <text x="38" y="155" font-family="Geist Mono,monospace" font-size="8" fill="var(--muted)">clean / cached</text>
+    <rect x="150" y="145" width="12" height="12" rx="2" fill="#60a5fa" opacity="0.3" stroke="#60a5fa"/>
+    <text x="168" y="155" font-family="Geist Mono,monospace" font-size="8" fill="var(--muted)">being denoised in parallel</text>
+    <text x="20" y="178" font-family="Geist Mono,monospace" font-size="8" fill="var(--muted)">arbitrary length: keep generating blocks until [EOS] — no fixed-length ceiling</text>
+  </svg>
+
+  <p>
+    The training algorithm is also clever. Naively you'd need to loop over all $B$ blocks,
+    running the forward pass $B$ times. Instead they concatenate: first a full forward pass
+    over the clean sequence to build the KV cache, then all noisy blocks in a single vectorized
+    pass using a carefully designed block-causal attention mask. Each token passes through the
+    network exactly twice. The overhead is tractable.
+  </p>
+
+  <h2>The Numbers (Actually Good Now)</h2>
+
+  <p>
+    Early discrete diffusion results were embarrassing. D3PM-uniform hit 137.9 perplexity on LM1B.
+    D3PM-absorbing was better at 76.9, but an AR transformer of the same size scored 43.6.
+    Not competitive. That's the honest baseline.
+  </p>
+
+  <p>
+    Here's where things stand now, after MDLM, SEDD, and BD3-LMs:
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Model</th>
+        <th>LM1B PPL ↓</th>
+        <th>OWT PPL ↓</th>
+        <th>Gen. PPL (L=1024) ↓</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>AR Transformer</td>
+        <td>22.83</td>
+        <td>17.54</td>
+        <td>14.1</td>
+      </tr>
+      <tr>
+        <td>D3PM (absorbing)</td>
+        <td>≤ 82.34</td>
+        <td>—</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>SEDD</td>
+        <td>≤ 32.68</td>
+        <td>≤ 24.10</td>
+        <td>52.0</td>
+      </tr>
+      <tr>
+        <td>MDLM</td>
+        <td>≤ 31.78</td>
+        <td>≤ 22.98</td>
+        <td>46.8</td>
+      </tr>
+      <tr class="highlight-row">
+        <td>BD3-LM L'=8</td>
+        <td>≤ 29.83</td>
+        <td>≤ 21.68</td>
+        <td>28.2</td>
+      </tr>
+      <tr class="highlight-row">
+        <td>BD3-LM L'=4</td>
+        <td>≤ 28.23</td>
+        <td>≤ 20.73</td>
+        <td>25.7</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    BD3-LM L'=4 is a <strong>13% perplexity improvement</strong> over MDLM on LM1B. On generative
+    perplexity — quality of actual samples, scored by GPT2-Large — BD3-LM scores 25.7 versus MDLM's
+    46.8. Nearly 2× better sample quality. Still behind AR, but the trajectory is clear.
+  </p>
+
+  <p>
+    The sequence length thing is also real. SEDD is hard-capped at the training context (1024 tokens).
+    BD3-LM generated sequences up to ~10K tokens — about 10× longer — because it can just keep
+    adding blocks until it hits <code>[EOS]</code>. That's not a trick. That's the architecture actually
+    working.
+  </p>
+
+  <div class="callout">
+    SSD-LM (a competing block diffusion approach using Gaussian diffusion over embeddings)
+    needs <strong>40,000 function evaluations</strong> per sample to match BD3-LM's quality.
+    BD3-LM needs <strong>1,000</strong>. Same quality, 40× cheaper. The discrete approach wins here.
+  </div>
+
+  <h2>The Verdict (Unpolished and Real)</h2>
+
+  <p>
+    The gap between diffusion and AR for text is closing, and it's closing because people finally
+    figured out that <em>training variance</em> — not architecture — was the main bottleneck.
+    The absorbing state transition matrix is the right inductive bias for text (BERT knew this in 2018;
+    we just didn't have the diffusion framing yet). Block diffusion unlocks KV caching and
+    arbitrary-length generation, the two things that made pure diffusion unusable in production.
+  </p>
+
+  <p>
+    Is it perfect? No. Perplexity still lags AR. The noise schedule optimization adds training complexity.
+    Bidirectional attention within each block means you can't do beam search the way you're used to.
+    But DiffuLLaMA — adapting a 7B LLaMA into a diffusion model via attention mask annealing and
+    a shift operation to keep the pretrained weights happy — is already hitting state-of-the-art on
+    code infilling benchmarks. The pieces are there.
+  </p>
+
+  <p>
+    The future isn't a typewriter. It's an architect that sketches the whole building and then refines
+    the lines. We're just now building the scaffolding.
+  </p>
+
+  <p>
+    I'm done. I need a Crunchwrap Supreme and about twelve more H100s.
+  </p>
+
+</article>
+
+<div class="post-nav">
+  <a href="../index.html">← all posts</a>
+</div>
+
+<footer>
+  <span class="footer-left">© 2026 Shubham Mishra</span>
+  <ul class="footer-links">
+    <li><a href="https://github.com/ShubhamMishra1611">github</a></li>
+    <li><a href="#">twitter</a></li>
+    <li><a href="#">rss</a></li>
+    <li><a href="mailto:smishraonline16@gmail.com?subject=%5Bblog%5D%20hi%20Shubham!">share your thoughts</a></li>
+  </ul>
+</footer>
+
+</body>
+</html>

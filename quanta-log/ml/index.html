@@ -45,23 +45,33 @@
 
 <div class="section-label" style="margin-bottom:1.4rem;">Latest</div>
 
-<a class="featured" href="posts/memory-sparse-attention.html">
+<a class="featured" href="posts/discrete-diffusion-next-token-prison.html">
   <div class="featured-top">
-    <span class="featured-title">Memory Sparse Attention — 100M-Token Context Without RAG</span>
+    <span class="featured-title">The Next-Token Prison: Why I'm Breaking Out with Discrete Diffusion</span>
     <span class="new-badge">new</span>
   </div>
-  <p class="featured-desc">MSA routes queries to relevant documents via a learned retrieval subspace, attends sparsely to only top-16 docs, and does it end-to-end — no pipeline. A 4B model beats RAG stacks running 235B generators. Document-wise RoPE, Memory Interleave, tiered CPU/GPU storage.</p>
+  <p class="featured-desc">AR models are architecturally incapable of self-repair. Discrete diffusion — absorbing state transitions, block-causal KV caching, clipped noise schedules — is closing the perplexity gap. BD3-LMs hit 13% better PPL than MDLM at 40× fewer function evaluations than competing approaches.</p>
   <div class="featured-footer">
     <div class="post-tags">
-      <span class="tag">attention</span>
+      <span class="tag">diffusion</span>
       <span class="tag">paper breakdown</span>
-      <span class="tag">long context</span>
+      <span class="tag">LLM internals</span>
     </div>
-    <span class="read-time">Mar 28 · 10 min</span>
+    <span class="read-time">May '26 · 15 min</span>
   </div>
 </a>
 
 <ul class="post-list">
+  <a class="post-item" href="posts/memory-sparse-attention.html">
+    <div class="post-item-left">
+      <span class="post-item-title">Memory Sparse Attention — 100M-Token Context Without RAG</span>
+      <span class="post-item-sub">Learned retrieval subspace, top-16 doc sparse attention, document-wise RoPE</span>
+    </div>
+    <div class="post-item-right">
+      <span class="post-date">Mar '26</span>
+      <span class="post-min">10 min</span>
+    </div>
+  </a>
   <a class="post-item" href="posts/native-sparse-attention.html">
     <div class="post-item-left">
       <span class="post-item-title">Native Sparse Attention — Hardware-Efficient Sparsity</span>
