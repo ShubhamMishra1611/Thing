@@ -385,15 +385,27 @@
       .branch-node { font-size: 0.7rem; padding: 0.4rem 0.6rem; }
       .branch-row::before { width: 88%; }
     }
+
+    /* ── Game of Life background ── */
+    #gol-canvas {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: -1;
+      opacity: 0.07;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
+
+<canvas id="gol-canvas"></canvas>
 
 <nav>
   <a href="/" class="logo">shubham</a>
   <ul class="nav-right">
     <li>
-      <button class="llm-btn" id="llmToggle" onclick="toggleLLM()">⌘ LLM mode</button>
+      <button class="llm-btn active" id="llmToggle" onclick="toggleLLM()">⌘ LLM mode</button>
     </li>
     <li>
       <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
@@ -590,7 +602,10 @@
 
 <!-- ══════════ LLM VIEW ══════════ -->
 <div id="llm-view">
-  <div class="llm-hint"># machine-readable profile — structured plain text</div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2rem;">
+    <div class="llm-hint" style="margin-bottom:0;"># machine-readable profile — structured plain text</div>
+    <button id="copy-btn" onclick="copyForClaude()" style="font-family:'Geist Mono',monospace;font-size:0.65rem;letter-spacing:0.06em;color:var(--green);background:none;border:1px solid var(--green);border-radius:5px;padding:0.3rem 0.8rem;cursor:pointer;transition:background 0.15s,color 0.15s;">COPY for claude</button>
+  </div>
 
   <div class="llm-section">
     <h1>PERSON</h1>
@@ -757,6 +772,44 @@
     conn.classList.toggle('visible', !open);
   }
 
+  /* ── Copy LLM view as Markdown ── */
+  function nodeToMd(node) {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent;
+    if (node.nodeType !== Node.ELEMENT_NODE) return '';
+    const tag = node.tagName.toLowerCase();
+    const inner = Array.from(node.childNodes).map(nodeToMd).join('');
+
+    if (tag === 'a') {
+      const href = node.getAttribute('href') || '';
+      const label = inner.trim();
+      if (!href || href === label) return label;
+      return `[${label}](${href})`;
+    }
+    if (tag === 'h1') return `\n## ${inner.trim()}\n`;
+    if (tag === 'h2') return `\n### ${inner.trim()}\n`;
+    if (tag === 'li') return `- ${inner.trim()}\n`;
+    if (tag === 'ul') return `\n${inner}`;
+    if (tag === 'div' && node.classList.contains('llm-section')) return `\n${inner}`;
+    if (tag === 'div' && node.classList.contains('llm-hint')) return `${inner.trim()}\n`;
+    if (tag === 'span' && node.classList.contains('k')) return `**${inner.trim()}**`;
+    return inner;
+  }
+
+  function copyForClaude() {
+    const view = document.getElementById('llm-view');
+    // exclude the copy button row
+    const sections = view.querySelectorAll('.llm-hint, .llm-section');
+    let md = '# Shubham Mishra — Profile\n\n';
+    sections.forEach(el => { md += nodeToMd(el); });
+    md = md.replace(/\n{3,}/g, '\n\n').trim();
+
+    navigator.clipboard.writeText(md).then(() => {
+      const btn = document.getElementById('copy-btn');
+      btn.textContent = 'copied ✓';
+      setTimeout(() => { btn.textContent = 'COPY for claude'; }, 2000);
+    });
+  }
+
   /* ── LLM / Human mode toggle ── */
   function toggleLLM() {
     const tree = document.getElementById('tree-view');
@@ -765,7 +818,6 @@
     const isLLM = llm.style.display === 'block';
     tree.style.display = isLLM ? '' : 'none';
     llm.style.display  = isLLM ? 'none' : 'block';
-    btn.classList.toggle('active', !isLLM);
     btn.textContent = isLLM ? '⌘ LLM mode' : '⌘ Human mode';
   }
 
@@ -800,6 +852,81 @@
 
   /* KaTeX loads deferred — re-render once it's ready */
   window.addEventListener('load', renderEquation);
+
+  /* ── Conway's Game of Life background ── */
+  (function() {
+    const canvas  = document.getElementById('gol-canvas');
+    const ctx     = canvas.getContext('2d');
+    const CELL    = 10;      // original cell size
+    const FPS     = 12;      // throttled — easy on CPU
+    const INTERVAL = 1000 / FPS;
+    let cols, rows, grid, next;
+    let lastTime    = 0;
+    let stableCount = 0;
+
+    function resize() {
+      canvas.width  = window.innerWidth;
+      canvas.height = window.innerHeight;
+      cols = Math.ceil(canvas.width  / CELL);
+      rows = Math.ceil(canvas.height / CELL);
+      seed();
+    }
+
+    function seed() {
+      grid = new Uint8Array(cols * rows);
+      next = new Uint8Array(cols * rows);
+      stableCount = 0;
+      for (let i = 0; i < grid.length; i++) grid[i] = Math.random() < 0.12 ? 1 : 0;
+    }
+
+    function step() {
+      let changed = 0;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          let n = 0;
+          for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+            if (dr === 0 && dc === 0) continue;
+            n += grid[((r + dr + rows) % rows) * cols + ((c + dc + cols) % cols)];
+          }
+          const alive = grid[r * cols + c];
+          const nv = (alive ? (n === 2 || n === 3) : (n === 3)) ? 1 : 0;
+          next[r * cols + c] = nv;
+          if (nv !== alive) changed++;
+        }
+      }
+      const tmp = grid; grid = next; next = tmp;
+
+      // re-seed a new random corner if stable for 30 steps
+      if (changed === 0) stableCount++;
+      else stableCount = 0;
+      if (stableCount >= 30) seed();
+    }
+
+    function draw() {
+      const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = isDark ? '#ffffff' : '#000000';
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (grid[r * cols + c]) {
+            ctx.fillRect(c * CELL, r * CELL, CELL - 1, CELL - 1);
+          }
+        }
+      }
+    }
+
+    function loop(ts) {
+      requestAnimationFrame(loop);
+      if (ts - lastTime < INTERVAL) return;
+      lastTime = ts;
+      step();
+      draw();
+    }
+
+    window.addEventListener('resize', resize);
+    resize();
+    requestAnimationFrame(loop);
+  })();
 </script>
 
 </body>
