@@ -9,8 +9,7 @@
   const panels = [...document.querySelectorAll("[data-panel]")];
   const sectionButtons = [...document.querySelectorAll("button[data-section]")];
   const closeButtons = [...document.querySelectorAll("[data-close-drawer]")];
-  const copyButton = document.querySelector("[data-copy-profile]");
-  const copyStatus = document.querySelector("#copy-status");
+  const copyButtons = [...document.querySelectorAll("[data-copy-profile]")];
   let activeSection = null;
   let returnFocus = null;
 
@@ -146,15 +145,17 @@
     if (!copied) throw new Error("Copy command was rejected");
   }
 
-  async function copyProfile() {
+  async function copyProfile(button) {
     const text = document.querySelector("#ai-profile").content.textContent.trim();
+    const action = button.closest(".copy-action");
+    const copyStatus = action.querySelector('[role="status"]');
     try {
       if (navigator.clipboard?.writeText && window.isSecureContext) await navigator.clipboard.writeText(text);
       else legacyCopy(text);
       copyStatus.textContent = "AI-readable profile copied to clipboard.";
     } catch (error) {
       copyStatus.textContent = "Automatic copy failed. Select and copy the profile from the text box below.";
-      let fallback = document.querySelector(".copy-fallback");
+      let fallback = action.querySelector(".copy-fallback");
       if (!fallback) {
         fallback = document.createElement("textarea");
         fallback.className = "copy-fallback";
@@ -167,7 +168,9 @@
       fallback.select();
     }
   }
-  copyButton.addEventListener("click", copyProfile);
+  copyButtons.forEach((button) => {
+    button.addEventListener("click", () => copyProfile(button));
+  });
 
   const initialSection = sectionFromHash();
   if (initialSection) {

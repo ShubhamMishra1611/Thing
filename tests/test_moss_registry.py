@@ -75,6 +75,12 @@ class MossRegistryLandingTests(unittest.TestCase):
         self.assertTrue(any(b.get("data-copy-profile") == "" for b in self.parser.buttons))
         self.assertTrue(self.parser.statuses, "copy action needs an accessible status region")
 
+    def test_copy_profile_action_is_visible_on_landing(self) -> None:
+        landing = re.search(r'(?is)<main\b[^>]*class=["\']landing["\'][^>]*>(.*?)</main>', self.html)
+        self.assertIsNotNone(landing, "landing main region is missing")
+        self.assertIn("data-copy-profile", landing.group(1))
+        self.assertIn('id="copy-status"', landing.group(1))
+
     def test_interaction_and_history_hooks_exist(self) -> None:
         for hook in (
             "pushState",
@@ -97,7 +103,7 @@ class MossRegistryLandingTests(unittest.TestCase):
             self.js,
             r"state\.mossDirect\s*\?\s*landingTrigger\(closingSection\)",
         )
-        self.assertIn('document.querySelector(".copy-fallback")', self.js)
+        self.assertIn('action.querySelector(".copy-fallback")', self.js)
 
     def test_required_palette_is_centralized(self) -> None:
         for color in ("#aeb39b", "#29312b", "#8c5d47", "#c6c8b5"):
