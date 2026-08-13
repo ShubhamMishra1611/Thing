@@ -1,933 +1,157 @@
-<!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<!doctype html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Shubham Mishra</title>
-  <link rel="stylesheet" href="assets/style.css" />
-  <script src="assets/theme.js"></script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-  <style>
-    body { max-width: 900px; }
-
-    /* ── Nav extras ── */
-    .llm-btn {
-      font-family: 'Geist Mono', monospace;
-      font-size: 0.68rem;
-      letter-spacing: 0.04em;
-      color: var(--muted);
-      background: none;
-      border: 1px solid var(--border);
-      border-radius: 5px;
-      padding: 0.3rem 0.7rem;
-      cursor: pointer;
-      transition: border-color 0.15s, color 0.15s, background 0.15s;
-    }
-    .llm-btn:hover { border-color: var(--green); color: var(--green); }
-    .llm-btn.active { border-color: var(--green); color: var(--green); background: color-mix(in srgb, var(--green) 8%, transparent); }
-
-    /* ══════════════════════════════════════
-       TREE VIEW
-    ══════════════════════════════════════ */
-    #tree-view { padding: 2rem 0 2rem; }
-
-    .tree-root {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-
-    /* ── Root node ── */
-    .root-node {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-    .root-card {
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 1.4rem 2rem;
-      background: var(--surface);
-      text-align: center;
-      min-width: 240px;
-    }
-    .root-name {
-      font-size: 1.3rem;
-      font-weight: 300;
-      letter-spacing: -0.02em;
-      margin-bottom: 0.25rem;
-    }
-    .root-role {
-      font-family: 'Geist Mono', monospace;
-      font-size: 0.62rem;
-      color: var(--muted);
-      letter-spacing: 0.06em;
-      margin-bottom: 0.25rem;
-    }
-    .root-place {
-      font-family: 'Geist Mono', monospace;
-      font-size: 0.6rem;
-      color: var(--subtle);
-      letter-spacing: 0.04em;
-      margin-bottom: 0.9rem;
-    }
-    .root-socials {
-      display: flex;
-      gap: 0.5rem;
-      justify-content: center;
-    }
-    .root-socials a {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 28px;
-      height: 28px;
-      border: 1px solid var(--border);
-      border-radius: 5px;
-      color: var(--muted);
-      transition: border-color 0.15s, color 0.15s;
-    }
-    .root-socials a:hover { border-color: var(--subtle); color: var(--text); }
-
-    /* ── Vertical connector ── */
-    .root-connector {
-      width: 1px;
-      height: 32px;
-      background: var(--border);
-      flex-shrink: 0;
-    }
-
-    /* ── Branch row ── */
-    .branch-row {
-      display: flex;
-      align-items: flex-start;
-      justify-content: center;
-      position: relative;
-      width: 100%;
-    }
-    .branch-row::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 66%;
-      height: 1px;
-      background: var(--border);
-    }
-
-    /* ── Single branch ── */
-    .branch {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      flex: 1;
-      max-width: 280px;
-    }
-    .branch-connector {
-      width: 1px;
-      height: 28px;
-      background: var(--border);
-      flex-shrink: 0;
-    }
-
-    /* ── Branch node button ── */
-    .branch-node {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-family: 'Geist Mono', monospace;
-      font-size: 0.78rem;
-      color: var(--muted);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 0.5rem 1rem;
-      background: var(--surface);
-      cursor: pointer;
-      user-select: none;
-      transition: border-color 0.15s, color 0.15s, background 0.15s;
-      white-space: nowrap;
-    }
-    .branch-node:hover { border-color: var(--subtle); color: var(--text); background: var(--hover-bg); }
-    .branch-node.open { border-color: var(--green); color: var(--text); }
-    .branch-node .chevron { font-size: 0.55rem; transition: transform 0.2s; opacity: 0.5; }
-    .branch-node.open .chevron { transform: rotate(180deg); opacity: 1; }
-
-    /* ── Expand connector ── */
-    .expand-connector {
-      width: 1px;
-      background: var(--border);
-      overflow: hidden;
-      max-height: 0;
-      transition: max-height 0.25s ease;
-      flex-shrink: 0;
-    }
-    .expand-connector.visible { max-height: 28px; }
-    .expand-connector-inner { height: 28px; }
-
-    /* ── Expand panel ── */
-    .expand-panel {
-      width: 100%;
-      max-width: 270px;
-      overflow: hidden;
-      max-height: 0;
-      transition: max-height 0.4s ease;
-    }
-    .expand-panel.open { max-height: 800px; }
-    .expand-inner {
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: var(--surface);
-      padding: 1rem 1.1rem;
-    }
-    .panel-label {
-      font-family: 'Geist Mono', monospace;
-      font-size: 0.6rem;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: var(--muted);
-      display: block;
-      margin-bottom: 0.75rem;
-      padding-bottom: 0.5rem;
-      border-bottom: 1px solid var(--border);
-    }
-
-    /* ── Research panel items ── */
-    .paper-item-t { padding: 0.6rem 0; border-bottom: 1px solid var(--border); }
-    .paper-item-t:last-of-type { border-bottom: none; }
-    .paper-title-t { font-size: 0.8rem; color: var(--text); line-height: 1.4; margin-bottom: 0.3rem; }
-    .paper-meta-t {
-      font-family: 'Geist Mono', monospace;
-      font-size: 0.6rem;
-      color: var(--muted);
-      display: flex;
-      gap: 0.5rem;
-      flex-wrap: wrap;
-    }
-    .paper-meta-t a { color: var(--green); text-decoration: none; }
-    .paper-meta-t a:hover { text-decoration: underline; }
-
-    /* ── Project panel items ── */
-    .proj-item-t {
-      display: block;
-      padding: 0.6rem 0;
-      border-bottom: 1px solid var(--border);
-      text-decoration: none;
-      color: inherit;
-    }
-    .proj-item-t:last-of-type { border-bottom: none; }
-    .proj-name-t {
-      font-size: 0.82rem;
-      color: var(--text);
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      gap: 0.4rem;
-      margin-bottom: 0.15rem;
-      transition: color 0.15s;
-    }
-    .proj-item-t:hover .proj-name-t { color: var(--green); }
-    .proj-desc-t { font-size: 0.74rem; color: var(--muted); line-height: 1.5; }
-
-    /* ── Blog panel items ── */
-    .blog-item-t {
-      display: block;
-      padding: 0.7rem 0.75rem;
-      border: 1px solid var(--border);
-      border-radius: 5px;
-      background: var(--hover-bg);
-      text-decoration: none;
-      color: inherit;
-      margin-bottom: 0.5rem;
-      transition: border-color 0.15s;
-    }
-    .blog-item-t:last-child { margin-bottom: 0; }
-    .blog-item-t:hover { border-color: var(--green); }
-    .blog-accent-t { font-size: 1rem; display: block; margin-bottom: 0.3rem; color: var(--muted); }
-    .blog-name-t { font-size: 0.82rem; color: var(--text); margin-bottom: 0.2rem; }
-    .blog-desc-t { font-size: 0.72rem; color: var(--muted); line-height: 1.5; }
-
-    /* panel footer link */
-    .panel-more {
-      display: inline-block;
-      margin-top: 0.75rem;
-      font-family: 'Geist Mono', monospace;
-      font-size: 0.6rem;
-      color: var(--muted);
-      text-decoration: none;
-      transition: color 0.15s;
-    }
-    .panel-more:hover { color: var(--text); }
-
-    /* ══════════════════════════════════════
-       CURRENTLY
-    ══════════════════════════════════════ */
-    .currently {
-      border-top: 1px solid var(--border);
-      padding: 2.5rem 0 2rem;
-      margin-top: 1rem;
-    }
-    .currently-header { margin-bottom: 1.4rem; }
-    .currently-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 2rem;
-    }
-    .curr-col-label {
-      font-family: 'Geist Mono', monospace;
-      font-size: 0.6rem;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 0.6rem;
-    }
-    .curr-list {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
-    .curr-list li {
-      font-size: 0.88rem;
-      color: var(--subtle);
-      line-height: 1.6;
-      padding: 0.3rem 0;
-      border-bottom: 1px solid var(--border);
-    }
-    .curr-list li:last-child { border-bottom: none; }
-    .curr-list li::before { content: none; }
-
-    /* ══════════════════════════════════════
-       EQUATION OF THE DAY
-    ══════════════════════════════════════ */
-    .eqotd {
-      border-top: 1px solid var(--border);
-      padding: 2.5rem 0 2.5rem;
-      margin-top: 1rem;
-    }
-    .eqotd-header {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      margin-bottom: 1.4rem;
-    }
-    .eqotd-label {
-      font-family: 'Geist Mono', monospace;
-      font-size: 0.65rem;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-    .eqotd-name {
-      font-family: 'Geist Mono', monospace;
-      font-size: 0.65rem;
-      color: var(--border);
-    }
-    .eqotd-card {
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: var(--surface);
-      padding: 1.6rem 1.8rem;
-    }
-    .eqotd-title {
-      font-size: 0.92rem;
-      color: var(--text);
-      margin-bottom: 1rem;
-      font-weight: 400;
-    }
-    .eqotd-math {
-      margin-bottom: 1.1rem;
-      overflow-x: auto;
-      font-size: 1.1rem;
-    }
-    .eqotd-desc {
-      font-size: 0.85rem;
-      line-height: 1.8;
-      color: var(--muted);
-    }
-
-    /* ══════════════════════════════════════
-       LLM VIEW
-    ══════════════════════════════════════ */
-    #llm-view {
-      display: none;
-      padding: 2rem 0 4rem;
-      font-family: 'Geist Mono', monospace;
-      font-size: 0.8rem;
-      line-height: 1.95;
-      color: var(--subtle);
-    }
-    #llm-view .llm-hint {
-      font-size: 0.65rem;
-      color: var(--border);
-      margin-bottom: 2rem;
-    }
-    #llm-view .llm-section {
-      border-top: 1px solid var(--border);
-      padding-top: 1rem;
-      margin-bottom: 0.5rem;
-    }
-    #llm-view h1 { font-size: 0.8rem; font-weight: 400; color: var(--text); margin: 0 0 0.4rem; }
-    #llm-view h2 { font-size: 0.8rem; font-weight: 400; color: var(--muted); margin: 1rem 0 0.2rem; }
-    #llm-view ul { list-style: none; padding: 0; margin: 0; }
-    #llm-view li { color: var(--subtle); }
-    #llm-view .k { color: var(--muted); }
-    #llm-view a { color: var(--green); text-decoration: none; }
-
-    @media (max-width: 700px) {
-      body { max-width: 820px; }
-      .branch-row::before { width: 80%; }
-      .branch { max-width: 200px; }
-      .expand-panel { max-width: 200px; }
-    }
-    @media (max-width: 520px) {
-      .branch-row { gap: 0; }
-      .branch-node { font-size: 0.7rem; padding: 0.4rem 0.6rem; }
-      .branch-row::before { width: 88%; }
-    }
-
-    /* ── Game of Life background ── */
-    #gol-canvas {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      z-index: -1;
-      opacity: 0.07;
-      pointer-events: none;
-    }
-  </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Shubham Mishra — foundational AI engineer and researcher working across model memory, constrained inference, medical vision, and agent systems.">
+  <title>Shubham Mishra — Moss Registry</title>
+  <link rel="stylesheet" href="assets/portfolio.css">
+  <script defer src="assets/portfolio.js"></script>
+  <script data-goatcounter="https://shubhammihsra.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </head>
 <body>
+  <div class="registry-page">
+    <header class="site-header">
+      <a class="wordmark" href="index.html" aria-label="Shubham Mishra home">Shubham Mishra</a>
+      <span>Foundational AI engineer</span>
+      <span class="registry-mark">Registry / 2026</span>
+    </header>
 
-<canvas id="gol-canvas"></canvas>
+    <main class="landing">
+      <section class="introduction" aria-labelledby="page-title">
+        <p class="eyebrow">Independent work index</p>
+        <h1 id="page-title">Building<br>useful<br>intelligence.</h1>
+        <p class="lede">Research and engineering across model memory, constrained inference, medical vision, and agent systems.</p>
+      </section>
 
-<nav>
-  <a href="/" class="logo">shubham</a>
-  <ul class="nav-right">
-    <li>
-      <button class="llm-btn active" id="llmToggle" onclick="toggleLLM()">⌘ LLM mode</button>
-    </li>
-    <li>
-      <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
-        <svg class="theme-icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-        <svg class="theme-icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-      </button>
-    </li>
-  </ul>
-</nav>
+      <nav class="registry" aria-label="Portfolio registry">
+        <button class="registry-entry" type="button" data-section="work" data-hash="#work" aria-controls="registry-drawer" aria-haspopup="dialog">
+          <span class="entry-number">01</span><span class="entry-name">Work</span><span class="entry-count">05 records</span>
+        </button>
+        <button class="registry-entry" type="button" data-section="research" data-hash="#research" aria-controls="registry-drawer" aria-haspopup="dialog">
+          <span class="entry-number">02</span><span class="entry-name">Research</span><span class="entry-count">02 papers</span>
+        </button>
+        <button class="registry-entry" type="button" data-section="writing" data-hash="#writing" aria-controls="registry-drawer" aria-haspopup="dialog">
+          <span class="entry-number">03</span><span class="entry-name">Writing</span><span class="entry-count">Index + notes</span>
+        </button>
+        <button class="registry-entry" type="button" data-section="profile" data-hash="#profile" aria-controls="registry-drawer" aria-haspopup="dialog">
+          <span class="entry-number">04</span><span class="entry-name">Profile</span><span class="entry-count">TXT</span>
+        </button>
+      </nav>
+    </main>
 
-<!-- ══════════ TREE VIEW ══════════ -->
-<div id="tree-view">
-  <div class="tree-root">
+    <footer class="site-footer">
+      <span>
+        <a href="https://github.com/ShubhamMishra1611" target="_blank" rel="noopener">GitHub</a> ·
+        <a href="https://scholar.google.com/citations?user=v0Vww5oAAAAJ" target="_blank" rel="noopener">Scholar</a> ·
+        <a href="https://linkedin.com/in/shubham-mishra-b6492922b" target="_blank" rel="noopener">LinkedIn</a>
+      </span>
+      <span>Choose a register to inspect</span>
+      <span>India / IST</span>
+    </footer>
+  </div>
 
-    <!-- Root card -->
-    <div class="root-node">
-      <div class="root-card">
-        <div class="root-name">Shubham Mishra</div>
-        <div class="root-role">AI engineer · researcher</div>
-        <div class="root-place">IIT Jodhpur · Audria</div>
-        <div class="root-socials">
-          <a href="https://github.com/ShubhamMishra1611" target="_blank" rel="noopener" title="GitHub">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
-          </a>
-          <a href="https://linkedin.com/in/shubham-mishra-b6492922b" target="_blank" rel="noopener" title="LinkedIn">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg>
-          </a>
-          <a href="https://scholar.google.com/citations?user=v0Vww5oAAAAJ" target="_blank" rel="noopener" title="Google Scholar">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-          </a>
-          <a href="mailto:smishraonline16@gmail.com" title="Email">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-          </a>
+  <div class="drawer-backdrop" data-close-drawer aria-hidden="true"></div>
+  <aside class="drawer" id="registry-drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden>
+    <header class="drawer-header">
+      <p class="drawer-kicker">Moss Registry</p>
+      <h2 id="drawer-title">Work</h2>
+      <button class="drawer-close" type="button" data-close-drawer aria-label="Close registry drawer"><span aria-hidden="true">×</span></button>
+      <nav class="drawer-nav" aria-label="Switch registry section">
+        <button type="button" data-section="work">Work</button>
+        <button type="button" data-section="research">Research</button>
+        <button type="button" data-section="writing">Writing</button>
+        <button type="button" data-section="profile">Profile</button>
+      </nav>
+    </header>
+
+    <div class="drawer-body">
+      <section class="drawer-section" id="section-work" data-panel="work" aria-labelledby="work-heading">
+        <h3 id="work-heading" class="visually-hidden">Selected work</h3>
+        <article class="record">
+          <span class="record-index">01</span><div><h4><a href="https://shubhammishra1611-lex-geographica-srcmas-wamqsh.streamlit.app/" target="_blank" rel="noopener">Agentic GIS System <span aria-hidden="true">↗</span></a></h4><p>Multi-agent system for spatial GIS tasks — suitability analysis, DEM, and pathfinding.</p><footer>LangChain · Gemini · OpenStreetMap</footer></div>
+        </article>
+        <article class="record">
+          <span class="record-index">02</span><div><h4><a href="https://github.com/ShubhamMishra1611/MLnode" target="_blank" rel="noopener">MLnode <span aria-hidden="true">↗</span></a></h4><p>No-code deep learning model builder via a Blender-inspired node graph UI.</p><footer>Python · PyQt5 · PyTorch</footer></div>
+        </article>
+        <article class="record">
+          <span class="record-index">03</span><div><h4><a href="https://github.com/ShubhamMishra1611/Game_lag" target="_blank" rel="noopener">Game Lag Detector <span aria-hidden="true">↗</span></a></h4><p>Real-time input lag detection via video and signal processing. 1st prize, TechFest IIT Bombay 2022.</p><footer>Python · OpenCV · Scikit-learn</footer></div>
+        </article>
+        <article class="record">
+          <span class="record-index">04</span><div><h4>PRISM</h4><p>Transformer-based masked autoencoder for hyperspectral image compression. Validation L2 of 0.02 and 50% memory reduction.</p><footer>PyTorch · WandB · NVIDIA P100 + 2×T4</footer></div>
+        </article>
+        <article class="record">
+          <span class="record-index">05</span><div><h4>CanSat</h4><p>Full structural design, multi-subsystem integration, and Python ground station software. Launched to 900m and judged by InSpace/ISRO.</p><footer><a href="https://medium.com/@smishraonline16/embarking-on-the-cansat-odyssey-part-one-from-concept-to-creation-0739857788b4" target="_blank" rel="noopener">Part 1 ↗</a> · <a href="https://medium.com/@smishraonline16/embarking-on-the-cansat-odyssey-part-two-engineering-structure-77483d898d5f" target="_blank" rel="noopener">Part 2 ↗</a></footer></div>
+        </article>
+      </section>
+
+      <section class="drawer-section" id="section-research" data-panel="research" aria-labelledby="research-heading" hidden>
+        <h3 id="research-heading" class="visually-hidden">Research papers</h3>
+        <article class="record">
+          <span class="record-index">01</span><div><h4>Cross-Modal Image Learning for HER2 Status Detection from H&amp;E Histopathology Images</h4><p>Medical imaging and cross-modal learning for HER2 detection.</p><footer>ISBI 2026 · <a href="https://ieeexplore.ieee.org/abstract/document/11515995" target="_blank" rel="noopener">Paper ↗</a> · <a href="https://scholar.google.com/citations?view_op=view_citation&amp;hl=en&amp;user=v0Vww5oAAAAJ&amp;citation_for_view=v0Vww5oAAAAJ:u-x6o8ySG0sC" target="_blank" rel="noopener">Scholar ↗</a></footer></div>
+        </article>
+        <article class="record">
+          <span class="record-index">02</span><div><h4>LLMGuard: Guarding Against Unsafe LLM Behavior</h4><p>Guarding language models through PII detection and compliance monitoring.</p><footer>AAAI 2024 · <a href="https://ojs.aaai.org/index.php/AAAI/article/view/30566" target="_blank" rel="noopener">Paper ↗</a></footer></div>
+        </article>
+        <p class="section-link"><a href="https://scholar.google.com/citations?user=v0Vww5oAAAAJ" target="_blank" rel="noopener">All papers on Google Scholar ↗</a></p>
+      </section>
+
+      <section class="drawer-section" id="section-writing" data-panel="writing" aria-labelledby="writing-heading" hidden>
+        <h3 id="writing-heading" class="visually-hidden">Writing</h3>
+        <article class="record category-record"><span class="record-index">~</span><div><h4><a href="ml/index.html">ML world</a></h4><p>Model internals, inference tricks, Python, and graph embeddings.</p><footer>Technical index</footer></div></article>
+        <article class="record category-record"><span class="record-index">&amp;</span><div><h4><a href="personal/index.html">Personal</a></h4><p>Thoughts and things that do not involve gradient descent.</p><footer>Personal index</footer></div></article>
+        <h3 class="subheading">Selected notes</h3>
+        <article class="record compact-record"><span class="record-index">01</span><div><h4><a href="ml/posts/memory-sparse-attention.html">Memory Sparse Attention</a></h4><footer>ML world</footer></div></article>
+        <article class="record compact-record"><span class="record-index">02</span><div><h4><a href="ml/posts/still-stuck-on-rag.html">Still Stuck on RAG</a></h4><footer>ML world</footer></div></article>
+        <article class="record compact-record"><span class="record-index">03</span><div><h4><a href="ml/posts/discrete-diffusion-next-token-prison.html">Discrete Diffusion: Breaking Free from the Next-Token Prison</a></h4><footer>ML world</footer></div></article>
+        <article class="record compact-record"><span class="record-index">04</span><div><h4><a href="personal/posts/making-notes.html">Making Notes</a></h4><footer>Personal</footer></div></article>
+      </section>
+
+      <section class="drawer-section" id="section-profile" data-panel="profile" aria-labelledby="profile-heading" hidden>
+        <h3 id="profile-heading" class="visually-hidden">Profile</h3>
+        <div class="profile-intro">
+          <p class="profile-role">Shubham Mishra · Foundational AI Engineer &amp; researcher</p>
+          <p>Currently at <strong>Audria</strong>; B.Tech at <strong>IIT Jodhpur</strong>, 2021–2025. Focused on LLM memory systems, constrained inference, medical imaging, and agent systems.</p>
+          <p class="profile-links"><a href="mailto:smishraonline16@gmail.com">Email</a> · <a href="https://github.com/ShubhamMishra1611" target="_blank" rel="noopener">GitHub ↗</a> · <a href="https://linkedin.com/in/shubham-mishra-b6492922b" target="_blank" rel="noopener">LinkedIn ↗</a> · <a href="https://scholar.google.com/citations?user=v0Vww5oAAAAJ" target="_blank" rel="noopener">Scholar ↗</a></p>
         </div>
-      </div>
-      <div class="root-connector"></div>
+        <div class="currently-grid">
+          <section><h4>Currently working</h4><ul><li>Running small language models on constrained hardware and Apple Neural Engine (ANE)</li><li>Representing continuous high-dimensional vectors as cluster hypersphere geodesics</li><li>Multi-head classification for Whole Slide Images (WSI)</li></ul></section>
+          <section><h4>Currently reading</h4><ul><li><cite>Predictably Irrational</cite> — Dan Ariely</li></ul></section>
+          <section><h4>Currently watching</h4><ul><li>Jujutsu Kaisen</li><li>Hell's Paradise</li></ul></section>
+        </div>
+        <div class="copy-action">
+          <button type="button" data-copy-profile>Copy AI-readable profile</button>
+          <p id="copy-status" role="status" aria-live="polite" aria-atomic="true"></p>
+        </div>
+      </section>
     </div>
+  </aside>
 
-    <!-- Branch row -->
-    <div class="branch-row">
+  <template id="ai-profile"># Shubham Mishra — Profile
 
-      <!-- Research -->
-      <div class="branch">
-        <div class="branch-connector"></div>
-        <div class="branch-node" id="node-research" onclick="toggle('research')">
-          Research <span class="chevron">▼</span>
-        </div>
-        <div class="expand-connector" id="conn-research"><div class="expand-connector-inner"></div></div>
-        <div class="expand-panel" id="panel-research">
-          <div class="expand-inner">
-            <span class="panel-label">Research</span>
+## Person
+- Role: Foundational AI Engineer and researcher
+- Affiliation: Audria (current); IIT Jodhpur B.Tech 2021–2025
+- Email: smishraonline16@gmail.com
+- GitHub: https://github.com/ShubhamMishra1611
+- LinkedIn: https://linkedin.com/in/shubham-mishra-b6492922b
+- Scholar: https://scholar.google.com/citations?user=v0Vww5oAAAAJ
 
-            <div class="paper-item-t">
-              <div class="paper-title-t">
-                Cross-Modal Image Learning for HER2 Status Detection from H&amp;E Histopathology Images
-                <a href="https://scholar.google.com/citations?view_op=view_citation&hl=en&user=v0Vww5oAAAAJ&citation_for_view=v0Vww5oAAAAJ:u-x6o8ySG0sC" target="_blank" style="font-family:'Geist Mono',monospace;font-size:0.58rem;color:var(--green);text-decoration:none;margin-left:0.4rem;">↗ scholar</a>
-              </div>
-              <div class="paper-meta-t">
-                <span>ISBI 2026</span>
-                <a href="https://ieeexplore.ieee.org/abstract/document/11515995" target="_blank">↗ paper</a>
-              </div>
-            </div>
+## Focus
+- LLM memory systems, constrained inference, medical imaging, and agent systems
+- Small language models on constrained hardware and Apple Neural Engine
+- Cluster hypersphere geodesics for continuous high-dimensional vectors
+- Multi-head classification for Whole Slide Images
 
-            <div class="paper-item-t">
-              <div class="paper-title-t">
-                LLMGuard: Guarding Against Unsafe LLM Behavior
-                <a href="https://ojs.aaai.org/index.php/AAAI/article/view/30566" target="_blank" style="font-family:'Geist Mono',monospace;font-size:0.58rem;color:var(--green);text-decoration:none;margin-left:0.4rem;">↗ scholar</a>
-              </div>
-              <div class="paper-meta-t">
-                <span>AAAI 2024</span>
-                <a href="https://ojs.aaai.org/index.php/AAAI/article/view/30566" target="_blank">↗ paper</a>
-              </div>
-            </div>
+## Research
+- Cross-Modal Image Learning for HER2 Status Detection from H&amp;E Histopathology Images — ISBI 2026
+- LLMGuard: Guarding Against Unsafe LLM Behavior — AAAI 2024
 
-            <a class="panel-more" href="https://scholar.google.com/citations?user=v0Vww5oAAAAJ" target="_blank">all papers on Scholar ↗</a>
-          </div>
-        </div>
-      </div>
-
-      <!-- Projects -->
-      <div class="branch">
-        <div class="branch-connector"></div>
-        <div class="branch-node" id="node-projects" onclick="toggle('projects')">
-          Projects <span class="chevron">▼</span>
-        </div>
-        <div class="expand-connector" id="conn-projects"><div class="expand-connector-inner"></div></div>
-        <div class="expand-panel" id="panel-projects">
-          <div class="expand-inner">
-            <span class="panel-label">Projects</span>
-
-            <a class="proj-item-t" href="https://shubhammishra1611-lex-geographica-srcmas-wamqsh.streamlit.app/" target="_blank" rel="noopener">
-              <div class="proj-name-t">Agentic GIS System <span class="tag" style="font-size:0.58rem;">LangChain</span></div>
-              <div class="proj-desc-t">Multi-agent system for spatial GIS tasks — suitability analysis, DEM, pathfinding.</div>
-            </a>
-
-            <a class="proj-item-t" href="https://github.com/ShubhamMishra1611/MLnode" target="_blank" rel="noopener">
-              <div class="proj-name-t">MLnode <span class="tag" style="font-size:0.58rem;">PyTorch</span></div>
-              <div class="proj-desc-t">No-code deep learning model builder via node graph UI, inspired by Blender geometry nodes.</div>
-            </a>
-
-            <a class="proj-item-t" href="https://github.com/ShubhamMishra1611/Game_lag" target="_blank" rel="noopener">
-              <div class="proj-name-t">Game Lag Detector <span class="tag" style="font-size:0.58rem;">OpenCV</span></div>
-              <div class="proj-desc-t">Real-time input lag detection via video + signal processing. 1st prize, TechFest IIT Bombay 2022.</div>
-            </a>
-
-            <a class="proj-item-t" href="https://github.com/ShubhamMishra1611" target="_blank" rel="noopener">
-              <div class="proj-name-t">PRISM <span class="tag" style="font-size:0.58rem;">MAE</span></div>
-              <div class="proj-desc-t">Transformer-based masked autoencoder for hyperspectral image compression. 50% memory reduction.</div>
-            </a>
-
-            <div class="proj-item-t" style="cursor:default;">
-              <div class="proj-name-t">CanSat <span class="tag" style="font-size:0.58rem;">ISRO</span></div>
-              <div class="proj-desc-t">Full structural design, multi-subsystem integration, ground station software. Launched to 900m.</div>
-              <div class="paper-meta-t" style="margin-top:0.35rem;">
-                <a href="https://medium.com/@smishraonline16/embarking-on-the-cansat-odyssey-part-one-from-concept-to-creation-0739857788b4" target="_blank" rel="noopener">↗ part 1</a>
-                <a href="https://medium.com/@smishraonline16/embarking-on-the-cansat-odyssey-part-two-engineering-structure-77483d898d5f" target="_blank" rel="noopener">↗ part 2</a>
-              </div>
-            </div>
-
-            <a class="panel-more" href="https://github.com/ShubhamMishra1611" target="_blank">more on GitHub ↗</a>
-          </div>
-        </div>
-      </div>
-
-      <!-- Writing -->
-      <div class="branch">
-        <div class="branch-connector"></div>
-        <div class="branch-node" id="node-blogs" onclick="toggle('blogs')">
-          Writing <span class="chevron">▼</span>
-        </div>
-        <div class="expand-connector" id="conn-blogs"><div class="expand-connector-inner"></div></div>
-        <div class="expand-panel" id="panel-blogs">
-          <div class="expand-inner">
-            <span class="panel-label">Writing</span>
-            <a class="blog-item-t" href="ml/index.html">
-              <span class="blog-accent-t">~</span>
-              <div class="blog-name-t">ML world</div>
-              <div class="blog-desc-t">Model internals, inference tricks, Python, graph embeddings.</div>
-            </a>
-            <a class="blog-item-t" href="personal/index.html">
-              <span class="blog-accent-t">&</span>
-              <div class="blog-name-t">Personal</div>
-              <div class="blog-desc-t">Everything else. Thoughts, things that don't involve gradient descent.</div>
-            </a>
-          </div>
-        </div>
-      </div>
-
-    </div>
-  </div>
-
-  <!-- EQUATION OF THE DAY -->
-  <div class="eqotd">
-    <div class="eqotd-header">
-      <span class="eqotd-label">Equation of the day</span>
-      <span class="eqotd-name" id="eqotd-name"></span>
-    </div>
-    <div class="eqotd-card">
-      <div class="eqotd-title" id="eqotd-title"></div>
-      <div class="eqotd-math" id="eqotd-math"></div>
-      <div class="eqotd-desc" id="eqotd-desc"></div>
-    </div>
-  </div>
-
-  <!-- CURRENTLY -->
-  <div class="currently">
-    <div class="currently-header">
-      <span class="eqotd-label">Currently</span>
-    </div>
-    <div class="currently-grid">
-      <div class="curr-col">
-        <div class="curr-col-label">working on</div>
-        <ul class="curr-list">
-          <li>... Running small language models on constrained hardware &amp; Apple Neural Engine (ANE)</li>
-          <li>... Representing continuous high-dimensional vectors as cluster hypersphere geodesics</li>
-          <li>... Multi-head classification for Whole Slide Images (WSI)</li>
-        </ul>
-      </div>
-      <div class="curr-col">
-        <div class="curr-col-label">reading</div>
-        <ul class="curr-list">
-          <li>... Predictably Irrational — Dan Ariely</li>
-        </ul>
-        <div class="curr-col-label" style="margin-top:1rem;">watching</div>
-        <ul class="curr-list">
-          <li>... Jujutsu Kaisen</li>
-          <li>... Hell's Paradise</li>
-        </ul>
-      </div>
-    </div>
-  </div>
-
-</div><!-- end tree-view -->
-
-<!-- ══════════ LLM VIEW ══════════ -->
-<div id="llm-view">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2rem;">
-    <div class="llm-hint" style="margin-bottom:0;"># machine-readable profile — structured plain text</div>
-    <button id="copy-btn" onclick="copyForClaude()" style="font-family:'Geist Mono',monospace;font-size:0.65rem;letter-spacing:0.06em;color:var(--green);background:none;border:1px solid var(--green);border-radius:5px;padding:0.3rem 0.8rem;cursor:pointer;transition:background 0.15s,color 0.15s;">COPY for claude</button>
-  </div>
-
-  <div class="llm-section">
-    <h1>PERSON</h1>
-    <ul>
-      <li><span class="k">name:</span> Shubham Mishra</li>
-      <li><span class="k">role:</span> Foundational AI Engineer, researcher</li>
-      <li><span class="k">affiliation:</span> Audria (current); IIT Jodhpur B.Tech 2021–2025</li>
-      <li><span class="k">email:</span> <a href="mailto:smishraonline16@gmail.com">smishraonline16@gmail.com</a></li>
-      <li><span class="k">github:</span> <a href="https://github.com/ShubhamMishra1611" target="_blank">github.com/ShubhamMishra1611</a></li>
-      <li><span class="k">linkedin:</span> <a href="https://linkedin.com/in/shubham-mishra-b6492922b" target="_blank">linkedin.com/in/shubham-mishra-b6492922b</a></li>
-      <li><span class="k">scholar:</span> <a href="https://scholar.google.com/citations?user=v0Vww5oAAAAJ" target="_blank">scholar.google.com/citations?user=v0Vww5oAAAAJ</a></li>
-    </ul>
-  </div>
-
-  <div class="llm-section">
-    <h1>SKILLS</h1>
-    <ul>
-      <li><span class="k">languages:</span> Python, C, C++</li>
-      <li><span class="k">ml_frameworks:</span> PyTorch, TensorFlow, Flax, Scikit-learn, Transformers (HuggingFace), OpenCV, NLTK</li>
-      <li><span class="k">agentic_llm:</span> LangChain, LangGraph, RAG, BM25, Graph-RAG, Constraint Decoding, KV-Cache, LoRA, Claude managed agents</li>
-      <li><span class="k">mlops_infra:</span> GCP, GitHub Actions, FastAPI, Redis, MongoDB, MLFlow, DagsHub, WandB, CI/CD</li>
-      <li><span class="k">hardware:</span> Apple Neural Engine (ANE) optimization, LLM inference on constrained hardware, multi-GPU distributed training</li>
-      <li><span class="k">other:</span> OpenFOAM, MATLAB, SQL, Tableau, LaTeX</li>
-    </ul>
-  </div>
-
-  <div class="llm-section">
-    <h1>EXPERIENCE</h1>
-    <h2>Audria — Foundational AI Engineer (Jun 2025–present)</h2>
-    <ul>
-      <li>LLM memory systems (RAG + BM25 + Graph-RAG) with dynamic routing</li>
-      <li>Multi-user voice processing: LangGraph + FastAPI + MongoDB + Redis on GCP</li>
-      <li>Rewrote LLM functions for Apple Neural Engine (ANE)</li>
-      <li>Constraint decoding with KV cache state management</li>
-      <li>Claude managed agents for multi-agent coordination</li>
-    </ul>
-    <h2>MMVG Lab, IIT Jodhpur — UG Researcher (Summer 2024–present)</h2>
-    <ul>
-      <li>Fine-tuned DinoV2, ResNet, VGG, Inception — 5% accuracy/F1 improvement</li>
-      <li>Custom transformer architectures for anomaly detection in medical imaging</li>
-      <li>Multi-GPU distributed training on HPC clusters</li>
-    </ul>
-    <h2>Ulster University, UK — Research Collaborator (Jun–Aug 2024)</h2>
-    <ul>
-      <li>Multilingual parliamentary debates: BERT, mBERT, XLM-R</li>
-      <li>LoRA fine-tuning — training time cut by 50%</li>
-      <li>Inference time reduced 40% via logit classification + model souping</li>
-    </ul>
-  </div>
-
-  <div class="llm-section">
-    <h1>RESEARCH</h1>
-    <h2>Paper 1</h2>
-    <ul>
-      <li><span class="k">title:</span> Cross-Modal Image Learning for HER2 Status Detection from H&amp;E Histopathology Images</li>
-      <li><span class="k">venue:</span> ISBI 2026</li>
-      <li><span class="k">topics:</span> medical imaging, cross-modal learning, HER2 detection</li>
-      <li><span class="k">doi:</span> 10.1109/ISBI61048.2026.11515995</li>
-      <li><span class="k">paper:</span> <a href="https://ieeexplore.ieee.org/abstract/document/11515995" target="_blank">IEEE Xplore</a></li>
-      <li><span class="k">scholar:</span> <a href="https://scholar.google.com/citations?view_op=view_citation&hl=en&user=v0Vww5oAAAAJ&citation_for_view=v0Vww5oAAAAJ:u-x6o8ySG0sC" target="_blank">Scholar</a></li>
-    </ul>
-    <h2>Paper 2</h2>
-    <ul>
-      <li><span class="k">title:</span> LLMGuard: Guarding Against Unsafe LLM Behavior</li>
-      <li><span class="k">venue:</span> AAAI 2024</li>
-      <li><span class="k">topics:</span> LLM safety, PII detection, compliance monitoring</li>
-      <li><span class="k">paper:</span> <a href="https://ojs.aaai.org/index.php/AAAI/article/view/30566" target="_blank">AAAI</a></li>
-    </ul>
-  </div>
-
-  <div class="llm-section">
-    <h1>PROJECTS</h1>
-    <h2>Agentic GIS System</h2>
-    <ul>
-      <li><span class="k">desc:</span> Multi-agent system for spatial GIS tasks — suitability, DEM, pathfinding</li>
-      <li><span class="k">stack:</span> LangChain, Gemini, OpenStreetMap</li>
-      <li><span class="k">link:</span> <a href="https://shubhammishra1611-lex-geographica-srcmas-wamqsh.streamlit.app/" target="_blank">live demo</a></li>
-    </ul>
-    <h2>MLnode</h2>
-    <ul>
-      <li><span class="k">desc:</span> No-code deep learning builder via node graph UI (Blender-inspired)</li>
-      <li><span class="k">stack:</span> Python, PyQt5, PyTorch</li>
-      <li><span class="k">link:</span> <a href="https://github.com/ShubhamMishra1611/MLnode" target="_blank">GitHub</a></li>
-    </ul>
-    <h2>Game Lag Detector</h2>
-    <ul>
-      <li><span class="k">desc:</span> Real-time input lag detection via video + signal processing. 1st prize TechFest IIT Bombay 2022.</li>
-      <li><span class="k">stack:</span> Python, OpenCV, Scikit-learn</li>
-      <li><span class="k">link:</span> <a href="https://github.com/ShubhamMishra1611/Game_lag" target="_blank">GitHub</a></li>
-    </ul>
-    <h2>PRISM</h2>
-    <ul>
-      <li><span class="k">desc:</span> Transformer masked autoencoder for hyperspectral image compression. Val L2=0.02, 50% memory reduction.</li>
-      <li><span class="k">stack:</span> PyTorch, WandB, NVIDIA P100 + 2×T4</li>
-    </ul>
-    <h2>CanSat</h2>
-    <ul>
-      <li><span class="k">desc:</span> Full structural design, multi-subsystem integration, Python ground station. Launched to 900m. Judged by InSpace/ISRO.</li>
-      <li><span class="k">part_1:</span> <a href="https://medium.com/@smishraonline16/embarking-on-the-cansat-odyssey-part-one-from-concept-to-creation-0739857788b4" target="_blank">Concept to Creation</a></li>
-      <li><span class="k">part_2:</span> <a href="https://medium.com/@smishraonline16/embarking-on-the-cansat-odyssey-part-two-engineering-structure-77483d898d5f" target="_blank">Engineering Structure</a></li>
-    </ul>
-  </div>
-
-  <div class="llm-section">
-    <h1>ACHIEVEMENTS</h1>
-    <ul>
-      <li>1st Prize — TechFest IIT Bombay, Computer Vision &amp; ML (2022)</li>
-      <li>3rd Place — 24-Hour Hackathon, MNIT Jaipur, Music Recommendation System (2023)</li>
-      <li>100% in Mathematics — High School, top 0.1% All India</li>
-    </ul>
-  </div>
-
-  <div class="llm-section">
-    <h1>CURRENTLY</h1>
-    <h2>Working on</h2>
-    <ul>
-      <li>Running small language models on constrained hardware &amp; Apple Neural Engine (ANE)</li>
-      <li>Representing continuous high-dimensional vectors as cluster hypersphere geodesics</li>
-      <li>Multi-head classification for Whole Slide Images (WSI)</li>
-    </ul>
-    <h2>Reading</h2>
-    <ul>
-      <li>Predictably Irrational — Dan Ariely</li>
-    </ul>
-    <h2>Watching</h2>
-    <ul>
-      <li>Jujutsu Kaisen</li>
-      <li>Hell's Paradise</li>
-    </ul>
-  </div>
-
-  <div class="llm-section">
-    <h1>WRITING</h1>
-    <h2>ML world</h2>
-    <ul>
-      <li><span class="k">desc:</span> Model internals, inference tricks, Python, graph embeddings</li>
-      <li><span class="k">link:</span> <a href="ml/index.html">ml/index.html</a></li>
-    </ul>
-    <h2>Personal</h2>
-    <ul>
-      <li><span class="k">desc:</span> Everything else — thoughts, things that don't involve gradient descent</li>
-      <li><span class="k">link:</span> <a href="personal/index.html">personal/index.html</a></li>
-    </ul>
-  </div>
-</div>
-
-<footer>
-  <span class="footer-left">© 2025 Shubham Mishra</span>
-  <ul class="footer-links">
-    <li><a href="mailto:smishraonline16@gmail.com">contact</a></li>
-  </ul>
-</footer>
-
-<script src="assets/equations.js"></script>
-<script>
-  /* ── Tree toggle ── */
-  function toggle(id) {
-    const node  = document.getElementById('node-' + id);
-    const panel = document.getElementById('panel-' + id);
-    const conn  = document.getElementById('conn-' + id);
-    const open  = panel.classList.contains('open');
-    node.classList.toggle('open', !open);
-    panel.classList.toggle('open', !open);
-    conn.classList.toggle('visible', !open);
-  }
-
-  /* ── Copy LLM view as Markdown ── */
-  function nodeToMd(node) {
-    if (node.nodeType === Node.TEXT_NODE) return node.textContent;
-    if (node.nodeType !== Node.ELEMENT_NODE) return '';
-    const tag = node.tagName.toLowerCase();
-    const inner = Array.from(node.childNodes).map(nodeToMd).join('');
-
-    if (tag === 'a') {
-      const href = node.getAttribute('href') || '';
-      const label = inner.trim();
-      if (!href || href === label) return label;
-      return `[${label}](${href})`;
-    }
-    if (tag === 'h1') return `\n## ${inner.trim()}\n`;
-    if (tag === 'h2') return `\n### ${inner.trim()}\n`;
-    if (tag === 'li') return `- ${inner.trim()}\n`;
-    if (tag === 'ul') return `\n${inner}`;
-    if (tag === 'div' && node.classList.contains('llm-section')) return `\n${inner}`;
-    if (tag === 'div' && node.classList.contains('llm-hint')) return `${inner.trim()}\n`;
-    if (tag === 'span' && node.classList.contains('k')) return `**${inner.trim()}**`;
-    return inner;
-  }
-
-  function copyForClaude() {
-    const view = document.getElementById('llm-view');
-    // exclude the copy button row
-    const sections = view.querySelectorAll('.llm-hint, .llm-section');
-    let md = '# Shubham Mishra — Profile\n\n';
-    sections.forEach(el => { md += nodeToMd(el); });
-    md = md.replace(/\n{3,}/g, '\n\n').trim();
-
-    navigator.clipboard.writeText(md).then(() => {
-      const btn = document.getElementById('copy-btn');
-      btn.textContent = 'copied ✓';
-      setTimeout(() => { btn.textContent = 'COPY for claude'; }, 2000);
-    });
-  }
-
-  /* ── LLM / Human mode toggle ── */
-  function toggleLLM() {
-    const tree = document.getElementById('tree-view');
-    const llm  = document.getElementById('llm-view');
-    const btn  = document.getElementById('llmToggle');
-    const isLLM = llm.style.display === 'block';
-    tree.style.display = isLLM ? '' : 'none';
-    llm.style.display  = isLLM ? 'none' : 'block';
-    btn.textContent = isLLM ? '⌘ LLM mode' : '⌘ Human mode';
-  }
-
-  function dateHash(str) {
-    let h = 5381;
-    for (let i = 0; i < str.length; i++) h = (h * 33 ^ str.charCodeAt(i)) >>> 0;
-    return h;
-  }
-
-  function renderEquation() {
-    const today = new Date().toISOString().slice(0, 10);
-    const eq = EQUATIONS[dateHash(today) % EQUATIONS.length];
-    document.getElementById('eqotd-name').textContent = eq.name;
-    document.getElementById('eqotd-title').textContent = eq.title;
-    document.getElementById('eqotd-desc').textContent = eq.desc;
-    const mathEl = document.getElementById('eqotd-math');
-    if (window.katex) {
-      katex.render(eq.tex, mathEl, { displayMode: true, throwOnError: false });
-    } else {
-      mathEl.textContent = eq.tex;
-      document.addEventListener('katex-loaded', () => {
-        katex.render(eq.tex, mathEl, { displayMode: true, throwOnError: false });
-      });
-    }
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', renderEquation);
-  } else {
-    renderEquation();
-  }
-
-  /* KaTeX loads deferred — re-render once it's ready */
-  window.addEventListener('load', renderEquation);
-
-  /* ── Conway's Game of Life background ── */
-  (function() {
-    const canvas  = document.getElementById('gol-canvas');
-    const ctx     = canvas.getContext('2d');
-    const CELL    = 10;      // original cell size
-    const FPS     = 12;      // throttled — easy on CPU
-    const INTERVAL = 1000 / FPS;
-    let cols, rows, grid, next;
-    let lastTime    = 0;
-    let stableCount = 0;
-
-    function resize() {
-      canvas.width  = window.innerWidth;
-      canvas.height = window.innerHeight;
-      cols = Math.ceil(canvas.width  / CELL);
-      rows = Math.ceil(canvas.height / CELL);
-      seed();
-    }
-
-    function seed() {
-      grid = new Uint8Array(cols * rows);
-      next = new Uint8Array(cols * rows);
-      stableCount = 0;
-      for (let i = 0; i < grid.length; i++) grid[i] = Math.random() < 0.12 ? 1 : 0;
-    }
-
-    function step() {
-      let changed = 0;
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          let n = 0;
-          for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
-            if (dr === 0 && dc === 0) continue;
-            n += grid[((r + dr + rows) % rows) * cols + ((c + dc + cols) % cols)];
-          }
-          const alive = grid[r * cols + c];
-          const nv = (alive ? (n === 2 || n === 3) : (n === 3)) ? 1 : 0;
-          next[r * cols + c] = nv;
-          if (nv !== alive) changed++;
-        }
-      }
-      const tmp = grid; grid = next; next = tmp;
-
-      // re-seed a new random corner if stable for 30 steps
-      if (changed === 0) stableCount++;
-      else stableCount = 0;
-      if (stableCount >= 30) seed();
-    }
-
-    function draw() {
-      const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = isDark ? '#ffffff' : '#000000';
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          if (grid[r * cols + c]) {
-            ctx.fillRect(c * CELL, r * CELL, CELL - 1, CELL - 1);
-          }
-        }
-      }
-    }
-
-    function loop(ts) {
-      requestAnimationFrame(loop);
-      if (ts - lastTime < INTERVAL) return;
-      lastTime = ts;
-      step();
-      draw();
-    }
-
-    window.addEventListener('resize', resize);
-    resize();
-    requestAnimationFrame(loop);
-  })();
-</script>
-
+## Selected work
+- Agentic GIS System: multi-agent spatial GIS tasks
+- MLnode: visual no-code deep learning builder
+- Game Lag Detector: 1st prize, TechFest IIT Bombay 2022
+- PRISM: hyperspectral image compression with 50% memory reduction
+- CanSat: integrated system launched to 900m, judged by InSpace/ISRO</template>
 </body>
 </html>
