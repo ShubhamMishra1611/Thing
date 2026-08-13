@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - claude/setup-file-structure-ztd2f
+      - redesign/moss-registry
 
 permissions:
   contents: read
