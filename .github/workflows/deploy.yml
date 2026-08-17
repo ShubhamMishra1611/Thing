@@ -6,6 +6,7 @@ on:
       - main
       - claude/setup-file-structure-ztd2f
       - redesign/moss-registry
+      - redesign/engineers-codex
 
 permissions:
   contents: read
