@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Static contract tests for the Moss Registry landing page."""
+"""Static contract tests for the Engineer's Codex portfolio landing."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ class LandingParser(HTMLParser):
             self.statuses.append(values)
 
 
-class MossRegistryLandingTests(unittest.TestCase):
+class EngineersCodexLandingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.html = INDEX.read_text(encoding="utf-8")
@@ -57,6 +57,48 @@ class MossRegistryLandingTests(unittest.TestCase):
         self.assertTrue(JS.is_file(), "missing assets/portfolio.js")
         self.assertRegex(self.html, r'href=["\']assets/portfolio\.css["\']')
         self.assertRegex(self.html, r'src=["\']assets/portfolio\.js["\']')
+
+    def test_approved_codex_landing_language_is_present(self) -> None:
+        required = (
+            "Building<br>machines<br>that reason.",
+            "What I cannot create, I do not understand.",
+            "Richard Feynman",
+            ">MEMORY<",
+            ">REASON<",
+            ">MACHINE<",
+        )
+        for text in required:
+            self.assertIn(text, self.html)
+
+        prototype_only = (
+            "Moss Registry",
+            "Index rerum",
+            "Selected mechanisms",
+            "Investigations",
+            "Commonplace book",
+            "About the maker",
+            "MEMORIA",
+            "RATIO",
+            "MACHINA",
+            "Intersections of memory, mechanism, and judgement.",
+        )
+        for text in prototype_only:
+            self.assertNotIn(text, self.html)
+
+        for label in ("Work", "Research", "Writing", "Profile"):
+            section = label.lower()
+            self.assertRegex(
+                self.html,
+                rf'(?is)<button\b(?=[^>]*\bclass=["\']registry-entry["\'])(?=[^>]*\bdata-section=["\']{section}["\'])[^>]*>'
+                rf'(?:(?!</button>).)*?<span\b[^>]*class=["\']entry-name["\'][^>]*>{label}</span>'
+                rf'(?:(?!</button>).)*?</button>',
+            )
+
+    def test_side_concept_labels_clear_the_mobile_description(self) -> None:
+        for label in ("REASON", "MACHINE"):
+            match = re.search(rf'<text\b[^>]*\by=["\'](\d+)["\'][^>]*>{label}</text>', self.html)
+            self.assertIsNotNone(match, f"missing {label} diagram label")
+            self.assertGreaterEqual(int(match.group(1)), 400)
 
     def test_four_registry_triggers_and_sections_exist(self) -> None:
         for section in SECTIONS:
@@ -101,12 +143,13 @@ class MossRegistryLandingTests(unittest.TestCase):
         self.assertIn("window.history.replaceState", self.js)
         self.assertRegex(
             self.js,
-            r"state\.mossDirect\s*\?\s*landingTrigger\(closingSection\)",
+            r"state\.portfolioDirect\s*\?\s*landingTrigger\(closingSection\)",
         )
+        self.assertNotIn("moss", self.js.lower())
         self.assertIn('action.querySelector(".copy-fallback")', self.js)
 
     def test_required_palette_is_centralized(self) -> None:
-        for color in ("#aeb39b", "#29312b", "#8c5d47", "#c6c8b5"):
+        for color in ("#e6ddc2", "#252a24", "#8d3728", "#eee5ca"):
             self.assertIn(color, self.css.lower())
 
     def test_small_accent_text_and_active_tabs_meet_wcag_contrast(self) -> None:
@@ -122,11 +165,11 @@ class MossRegistryLandingTests(unittest.TestCase):
             bright, dark = sorted((luminance(first), luminance(second)), reverse=True)
             return (bright + 0.05) / (dark + 0.05)
 
-        accent_match = re.search(r"--copper-ink:\s*(#[0-9a-f]{6})", self.css, re.I)
-        self.assertIsNotNone(accent_match, "small accent text needs a contrast-safe copper token")
+        accent_match = re.search(r"--accent:\s*(#[0-9a-f]{6})", self.css, re.I)
+        self.assertIsNotNone(accent_match, "small accent text needs a contrast-safe token")
         accent = accent_match.group(1)
-        self.assertGreaterEqual(contrast(accent, "#aeb39b"), 3.0)
-        self.assertGreaterEqual(contrast("#c6c8b5", accent), 4.5)
+        self.assertGreaterEqual(contrast(accent, "#e6ddc2"), 4.5)
+        self.assertGreaterEqual(contrast("#eee5ca", accent), 4.5)
 
     def test_required_content_is_present(self) -> None:
         required = (

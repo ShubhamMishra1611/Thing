@@ -66,7 +66,7 @@
     drawer.addEventListener("transitionend", finishHiding, { once: true });
     window.setTimeout(finishHiding, 250);
     const state = window.history.state || {};
-    const focusTarget = state.mossDirect
+    const focusTarget = state.portfolioDirect
       ? landingTrigger(closingSection)
       : returnFocus || landingTrigger(closingSection);
     if (restoreFocus && focusTarget?.isConnected) focusTarget.focus();
@@ -77,11 +77,11 @@
     if (sourceButton && !sourceButton.closest(".drawer")) returnFocus = sourceButton;
     if (activeSection === section) return;
     const state = window.history.state || {};
-    const nextState = { mossSection: section, mossDirect: Boolean(state.mossDirect) };
+    const nextState = { portfolioSection: section, portfolioDirect: Boolean(state.portfolioDirect) };
     if (activeSection) {
       window.history.replaceState(nextState, "", `#${section}`);
     } else {
-      window.history.pushState({ ...nextState, mossDirect: false }, "", `#${section}`);
+      window.history.pushState({ ...nextState, portfolioDirect: false }, "", `#${section}`);
     }
     renderSection(section, true);
   }
@@ -89,14 +89,14 @@
   function closeDrawer() {
     if (!activeSection) return;
     const state = window.history.state || {};
-    if (!state.mossDirect) {
+    if (!state.portfolioDirect) {
       hideDrawer();
       window.history.back();
       return;
     }
     const cleanUrl = `${window.location.pathname}${window.location.search}`;
     hideDrawer();
-    window.history.replaceState({ mossSection: null, mossDirect: false }, "", cleanUrl);
+    window.history.replaceState({ portfolioSection: null, portfolioDirect: false }, "", cleanUrl);
   }
 
   sectionButtons.forEach((button) => {
@@ -174,9 +174,9 @@
 
   const initialSection = sectionFromHash();
   if (initialSection) {
-    window.history.replaceState({ mossSection: initialSection, mossDepth: 0, mossDirect: true }, "", `#${initialSection}`);
+    window.history.replaceState({ portfolioSection: initialSection, portfolioDepth: 0, portfolioDirect: true }, "", `#${initialSection}`);
     renderSection(initialSection, true);
   } else {
-    window.history.replaceState({ mossSection: null, mossDepth: 0, mossDirect: false }, "", window.location.href);
+    window.history.replaceState({ portfolioSection: null, portfolioDepth: 0, portfolioDirect: false }, "", window.location.href);
   }
 })();
